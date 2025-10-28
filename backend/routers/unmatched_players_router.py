@@ -6,7 +6,7 @@ failed fuzzy matching during import.
 """
 
 import logging
-from typing import Optional
+from typing import Optional, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Depends
@@ -19,10 +19,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/unmatched-players", tags=["unmatched-players"])
 
 
-# Get database session - imported from main.py
-def get_db():
-    """Placeholder - actual implementation in main.py"""
-    pass
+# Placeholder - will be overridden by main.py
+get_db = None
+
+
+# Create a function that returns the current get_db function
+# This is needed because Depends() captures the function at decoration time,
+# so we need a wrapper that returns the latest get_db at runtime
+def _get_current_db_dependency():
+    """Get the current database dependency function."""
+    import sys
+    current_module = sys.modules[__name__]
+    if current_module.get_db is None:
+        raise RuntimeError("get_db not initialized. Make sure main.py has set up the dependency.")
+    # Return the generator from get_db
+    yield from current_module.get_db()
 
 
 class MapPlayerRequest(BaseModel):
@@ -40,7 +51,7 @@ class IgnorePlayerRequest(BaseModel):
 async def get_unmatched_players(
     import_id: str = Query(..., description="Required: Import ID (UUID)"),
     status: Optional[str] = Query(None, description="Optional: Filter by status (pending, mapped, ignored)"),
-    db=Depends(get_db),
+    db: Any = Depends(_get_current_db_dependency),
 ) -> dict:
     """
     Get unmatched players from a specific import.
@@ -124,7 +135,7 @@ async def get_unmatched_players(
 @router.post("/map")
 async def map_unmatched_player(
     request: MapPlayerRequest,
-    db=Depends(get_db),
+    db: Any = Depends(_get_current_db_dependency),
 ) -> dict:
     """
     Map an unmatched player to a canonical player by creating an alias.
@@ -226,7 +237,7 @@ async def map_unmatched_player(
 @router.post("/ignore")
 async def ignore_unmatched_player(
     request: IgnorePlayerRequest,
-    db=Depends(get_db),
+    db: Any = Depends(_get_current_db_dependency),
 ) -> dict:
     """
     Mark an unmatched player as ignored.

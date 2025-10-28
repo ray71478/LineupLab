@@ -12,7 +12,7 @@ Provides REST API endpoints for:
 
 import logging
 from datetime import datetime, date
-from typing import Optional
+from typing import Optional, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -45,8 +45,22 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["weeks"])
 
-# This will be overridden by main.py
+
+# Module-level placeholder that will be overridden by main.py
 get_db = None
+
+
+# Create a function that returns the current get_db function
+# This is needed because Depends() captures the function at decoration time,
+# so we need a wrapper that returns the latest get_db at runtime
+def _get_current_db_dependency():
+    """Get the current database dependency function."""
+    import sys
+    current_module = sys.modules[__name__]
+    if current_module.get_db is None:
+        raise RuntimeError("get_db not initialized. Make sure main.py has set up the dependency.")
+    # Return the generator from get_db
+    yield from current_module.get_db()
 
 
 def validate_year(year: int) -> None:
@@ -97,7 +111,7 @@ def validate_import_status(status: str) -> None:
 async def get_weeks(
     year: int,
     include_metadata: bool = True,
-    db=Depends(get_db),
+    db: Any = Depends(_get_current_db_dependency),
 ) -> WeekListResponse:
     """
     Get all weeks for a given NFL season.
@@ -161,7 +175,7 @@ async def get_weeks(
 
 
 @router.get("/current-week", response_model=CurrentWeekResponse)
-async def get_current_week(db=Depends(get_db)) -> CurrentWeekResponse:
+async def get_current_week(db: Any = Depends(_get_current_db_dependency)) -> CurrentWeekResponse:
     """
     Get the current active NFL week.
 
@@ -211,7 +225,7 @@ async def get_current_week(db=Depends(get_db)) -> CurrentWeekResponse:
 @router.get("/weeks/{week_id}/metadata", response_model=WeekMetadataDetailsResponse)
 async def get_week_metadata(
     week_id: int,
-    db=Depends(get_db),
+    db: Any = Depends(_get_current_db_dependency),
 ) -> WeekMetadataDetailsResponse:
     """
     Get detailed metadata for a specific week.
@@ -253,7 +267,7 @@ async def get_week_metadata(
 async def update_week_status(
     week_id: int,
     request: StatusUpdateRequest,
-    db=Depends(get_db),
+    db: Any = Depends(_get_current_db_dependency),
 ) -> StatusUpdateResponse:
     """
     Update the status of a week with manual override.
@@ -348,7 +362,7 @@ async def update_week_status(
 @router.post("/weeks/generate", response_model=GenerateWeeksResponse)
 async def generate_weeks(
     request: GenerateWeeksRequest,
-    db=Depends(get_db),
+    db: Any = Depends(_get_current_db_dependency),
 ) -> GenerateWeeksResponse:
     """
     Generate 18 weeks for a given NFL season.
@@ -418,7 +432,7 @@ async def generate_weeks(
 @router.get("/nfl-schedule", response_model=NFLScheduleResponse)
 async def get_nfl_schedule(
     year: Optional[int] = None,
-    db=Depends(get_db),
+    db: Any = Depends(_get_current_db_dependency),
 ) -> NFLScheduleResponse:
     """
     Get the NFL schedule for a given year.
@@ -464,7 +478,7 @@ async def get_nfl_schedule(
 async def lock_week(
     week_id: int,
     request: LockWeekRequest,
-    db=Depends(get_db),
+    db: Any = Depends(_get_current_db_dependency),
 ) -> LockWeekResponse:
     """
     Lock a week after successful data import.
@@ -545,7 +559,7 @@ async def lock_week(
 async def update_import_status(
     week_id: int,
     request: ImportStatusRequest,
-    db=Depends(get_db),
+    db: Any = Depends(_get_current_db_dependency),
 ) -> ImportStatusResponse:
     """
     Update the import status of a week.

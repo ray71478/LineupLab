@@ -6,7 +6,7 @@ to track ownership and projection changes over time.
 """
 
 import logging
-from typing import Optional
+from typing import Optional, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Depends
@@ -18,17 +18,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/import-history", tags=["import-history"])
 
 
-# Get database session - imported from main.py
-def get_db():
-    """Placeholder - actual implementation in main.py"""
-    pass
+# Placeholder - will be overridden by main.py
+get_db = None
+
+
+# Create a function that returns the current get_db function
+# This is needed because Depends() captures the function at decoration time,
+# so we need a wrapper that returns the latest get_db at runtime
+def _get_current_db_dependency():
+    """Get the current database dependency function."""
+    import sys
+    current_module = sys.modules[__name__]
+    if current_module.get_db is None:
+        raise RuntimeError("get_db not initialized. Make sure main.py has set up the dependency.")
+    # Return the generator from get_db
+    yield from current_module.get_db()
 
 
 @router.get("")
 async def get_import_history(
     week_id: int = Query(..., description="Required: Week ID"),
     source: Optional[str] = Query(None, description="Optional: Filter by source (LineStar, DraftKings, ComprehensiveStats)"),
-    db=Depends(get_db),
+    db: Any = Depends(_get_current_db_dependency),
 ) -> dict:
     """
     Get import history for a specific week.
@@ -133,7 +144,7 @@ async def get_import_history(
 async def compare_imports(
     current_id: str = Query(..., description="Current import ID (UUID)"),
     previous_id: str = Query(..., description="Previous import ID (UUID)"),
-    db=Depends(get_db),
+    db: Any = Depends(_get_current_db_dependency),
 ) -> dict:
     """
     Compare two imports to show ownership and projection changes.

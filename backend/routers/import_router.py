@@ -7,7 +7,7 @@ with comprehensive error handling and transaction management.
 
 import logging
 import re
-from typing import Optional
+from typing import Optional, Any
 
 from fastapi import APIRouter, UploadFile, File, Form, Depends
 from sqlalchemy import text
@@ -23,10 +23,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/import", tags=["import"])
 
 
-# Get database session - imported from main.py
-def get_db():
-    """Placeholder - actual implementation in main.py"""
-    pass
+# Placeholder - will be overridden by main.py
+get_db = None
+
+
+# Create a function that returns the current get_db function
+# This is needed because Depends() captures the function at decoration time,
+# so we need a wrapper that returns the latest get_db at runtime
+def _get_current_db_dependency():
+    """Get the current database dependency function."""
+    import sys
+    current_module = sys.modules[__name__]
+    if current_module.get_db is None:
+        raise RuntimeError("get_db not initialized. Make sure main.py has set up the dependency.")
+    # Return the generator from get_db
+    yield from current_module.get_db()
 
 
 def detect_week_from_filename(filename: str, source: str) -> Optional[int]:
@@ -82,7 +93,7 @@ async def import_linestar(
     file: UploadFile = File(...),
     week_id: int = Form(...),
     detected_week: Optional[int] = Form(None),
-    db=Depends(get_db),
+    db: Any = Depends(_get_current_db_dependency),
 ) -> dict:
     """
     Import LineStar player data from XLSX file.
@@ -273,7 +284,7 @@ async def import_draftkings(
     file: UploadFile = File(...),
     week_id: int = Form(...),
     detected_week: Optional[int] = Form(None),
-    db=Depends(get_db),
+    db: Any = Depends(_get_current_db_dependency),
 ) -> dict:
     """
     Import DraftKings player data from XLSX file.
@@ -452,7 +463,7 @@ async def import_draftkings(
 @router.post("/nfl-stats")
 async def import_nfl_stats(
     file: UploadFile = File(...),
-    db=Depends(get_db),
+    db: Any = Depends(_get_current_db_dependency),
 ) -> dict:
     """
     Import NFL Comprehensive Stats data from XLSX file.
