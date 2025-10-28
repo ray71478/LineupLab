@@ -1,0 +1,62 @@
+Generic single-database configuration for Cortex DFS Optimizer.
+
+## Running Migrations
+
+### Prerequisites
+1. Ensure PostgreSQL is running
+2. Create database: `createdb cortex`
+3. Install Python dependencies: `pip install alembic psycopg2-binary`
+
+### Apply Migrations
+```bash
+# Run all pending migrations
+alembic upgrade head
+
+# View migration history
+alembic history
+
+# View current version
+alembic current
+```
+
+### Rollback Migrations
+```bash
+# Rollback one migration
+alembic downgrade -1
+
+# Rollback to specific version
+alembic downgrade <revision>
+
+# Rollback all migrations
+alembic downgrade base
+```
+
+### Creating New Migrations
+```bash
+# Create a new migration
+alembic revision -m "description of changes"
+
+# Auto-generate migration from models (requires models to be imported in env.py)
+alembic revision --autogenerate -m "description of changes"
+```
+
+## Database Schema Overview
+
+This Alembic setup manages the Cortex database schema for the Data Import System.
+
+### Tables Created in Migration 001:
+1. **weeks** - NFL weeks tracking (season, week_number, status)
+2. **player_pools** - DFS players for each week (salary, projections, ownership)
+3. **historical_stats** - NFL stats by player/week/season
+4. **historical_stats_backup** - Backup before full replace
+5. **player_aliases** - Map alternate names to canonical keys
+6. **import_history** - Track all imports with metadata
+7. **player_pool_history** - Snapshot after each import
+8. **unmatched_players** - Players skipped during fuzzy matching
+
+All tables include appropriate:
+- Primary keys
+- Foreign keys with CASCADE deletes
+- Check constraints for data validation
+- Unique constraints to prevent duplicates
+- Indexes for query performance
