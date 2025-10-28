@@ -28,7 +28,7 @@ def get_db():
 async def get_import_history(
     week_id: int = Query(..., description="Required: Week ID"),
     source: Optional[str] = Query(None, description="Optional: Filter by source (LineStar, DraftKings, ComprehensiveStats)"),
-    db: Session = Depends(get_db),
+    db=Depends(get_db),
 ) -> dict:
     """
     Get import history for a specific week.
@@ -133,7 +133,7 @@ async def get_import_history(
 async def compare_imports(
     current_id: str = Query(..., description="Current import ID (UUID)"),
     previous_id: str = Query(..., description="Previous import ID (UUID)"),
-    db: Session = Depends(get_db),
+    db=Depends(get_db),
 ) -> dict:
     """
     Compare two imports to show ownership and projection changes.

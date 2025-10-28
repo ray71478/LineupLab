@@ -40,7 +40,7 @@ class IgnorePlayerRequest(BaseModel):
 async def get_unmatched_players(
     import_id: str = Query(..., description="Required: Import ID (UUID)"),
     status: Optional[str] = Query(None, description="Optional: Filter by status (pending, mapped, ignored)"),
-    db: Session = Depends(get_db),
+    db=Depends(get_db),
 ) -> dict:
     """
     Get unmatched players from a specific import.
@@ -124,7 +124,7 @@ async def get_unmatched_players(
 @router.post("/map")
 async def map_unmatched_player(
     request: MapPlayerRequest,
-    db: Session = Depends(get_db),
+    db=Depends(get_db),
 ) -> dict:
     """
     Map an unmatched player to a canonical player by creating an alias.
@@ -226,7 +226,7 @@ async def map_unmatched_player(
 @router.post("/ignore")
 async def ignore_unmatched_player(
     request: IgnorePlayerRequest,
-    db: Session = Depends(get_db),
+    db=Depends(get_db),
 ) -> dict:
     """
     Mark an unmatched player as ignored.

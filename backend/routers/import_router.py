@@ -82,7 +82,7 @@ async def import_linestar(
     file: UploadFile = File(...),
     week_id: int = Form(...),
     detected_week: Optional[int] = Form(None),
-    db: Session = Depends(get_db),
+    db=Depends(get_db),
 ) -> dict:
     """
     Import LineStar player data from XLSX file.
@@ -273,7 +273,7 @@ async def import_draftkings(
     file: UploadFile = File(...),
     week_id: int = Form(...),
     detected_week: Optional[int] = Form(None),
-    db: Session = Depends(get_db),
+    db=Depends(get_db),
 ) -> dict:
     """
     Import DraftKings player data from XLSX file.
@@ -452,7 +452,7 @@ async def import_draftkings(
 @router.post("/nfl-stats")
 async def import_nfl_stats(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
+    db=Depends(get_db),
 ) -> dict:
     """
     Import NFL Comprehensive Stats data from XLSX file.
