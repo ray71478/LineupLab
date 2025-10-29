@@ -4,6 +4,7 @@
  * Button with dropdown menu for selecting import type (LineStar, DraftKings, Season Stats).
  * Handles file input and triggers the import process.
  * Shows spinner during upload and toast notifications on completion.
+ * Integrates with Week Management to lock weeks after successful import.
  */
 
 import React, { useState, useRef } from 'react';
@@ -15,10 +16,13 @@ import {
   ListItemText,
   CircularProgress,
   Box,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import useDataImport from '../../hooks/useDataImport';
+import useImportIntegration from '../../hooks/useImportIntegration';
 import WeekMismatchDialog from './WeekMismatchDialog';
 import { useWeekStore } from '../../store/weekStore';
 
@@ -59,8 +63,11 @@ export const ImportDataButton: React.FC<ImportDataButtonProps> = ({
 }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedImportType, setSelectedImportType] = useState<ImportType | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { setCurrentWeek } = useWeekStore();
+  const { setCurrentWeek, currentWeek, weeks } = useWeekStore();
+  const { lockWeekAfterImport, updateImportStatus } = useImportIntegration();
 
   const {
     isLoading,
@@ -103,7 +110,33 @@ export const ImportDataButton: React.FC<ImportDataButtonProps> = ({
     }
 
     if (result && result.success && result.import_id) {
-      onSuccess?.(result.import_id);
+      // Show success notification
+      const msg = result.message || `${result.player_count || result.record_count || 0} records imported successfully`;
+      setSuccessMessage(msg);
+      setShowSuccess(true);
+
+      // Integration with Week Management: Lock the week (only for player pool imports, not nfl-stats)
+      if (selectedImportType !== 'nfl-stats') {
+        const currentWeekObj = weeks.find((w) => w.week_number === currentWeek);
+        if (currentWeekObj) {
+          const locked = await lockWeekAfterImport(
+            currentWeekObj.id,
+            result.import_id,
+            result.player_count || 0
+          );
+
+          if (locked) {
+            onSuccess?.(result.import_id);
+          } else {
+            onError?.('Failed to lock week after import');
+          }
+        } else {
+          onSuccess?.(result.import_id);
+        }
+      } else {
+        // For nfl-stats, no week locking needed
+        onSuccess?.(result.import_id);
+      }
     } else if (result && result.error) {
       onError?.(result.error);
     }
@@ -126,7 +159,33 @@ export const ImportDataButton: React.FC<ImportDataButtonProps> = ({
         const result = await uploadFile(file, selectedImportType, true);
 
         if (result && result.success && result.import_id) {
-          onSuccess?.(result.import_id);
+          // Show success notification
+          const msg = result.message || `${result.player_count || result.record_count || 0} records imported successfully`;
+          setSuccessMessage(msg);
+          setShowSuccess(true);
+
+          // Lock the detected week (only for player pool imports, not nfl-stats)
+          if (selectedImportType !== 'nfl-stats') {
+            const detectedWeekObj = weeks.find((w) => w.week_number === detectedWeek);
+            if (detectedWeekObj) {
+              const locked = await lockWeekAfterImport(
+                detectedWeekObj.id,
+                result.import_id,
+                result.player_count || 0
+              );
+
+              if (locked) {
+                onSuccess?.(result.import_id);
+              } else {
+                onError?.('Failed to lock week after import');
+              }
+            } else {
+              onSuccess?.(result.import_id);
+            }
+          } else {
+            // For nfl-stats, no week locking needed
+            onSuccess?.(result.import_id);
+          }
         } else if (result && result.error) {
           onError?.(result.error);
         }
@@ -143,7 +202,33 @@ export const ImportDataButton: React.FC<ImportDataButtonProps> = ({
       const result = await uploadFile(file, selectedImportType, false);
 
       if (result && result.success && result.import_id) {
-        onSuccess?.(result.import_id);
+        // Show success notification
+        const msg = result.message || `${result.player_count || result.record_count || 0} records imported successfully`;
+        setSuccessMessage(msg);
+        setShowSuccess(true);
+
+        // Lock the selected week (only for player pool imports, not nfl-stats)
+        if (selectedImportType !== 'nfl-stats') {
+          const selectedWeekObj = weeks.find((w) => w.week_number === currentWeek);
+          if (selectedWeekObj) {
+            const locked = await lockWeekAfterImport(
+              selectedWeekObj.id,
+              result.import_id,
+              result.player_count || 0
+            );
+
+            if (locked) {
+              onSuccess?.(result.import_id);
+            } else {
+              onError?.('Failed to lock week after import');
+            }
+          } else {
+            onSuccess?.(result.import_id);
+          }
+        } else {
+          // For nfl-stats, no week locking needed
+          onSuccess?.(result.import_id);
+        }
       } else if (result && result.error) {
         onError?.(result.error);
       }
@@ -218,6 +303,30 @@ export const ImportDataButton: React.FC<ImportDataButtonProps> = ({
           isLoading={isLoading}
         />
       )}
+
+      {/* Success Notification */}
+      <Snackbar
+        open={showSuccess}
+        autoHideDuration={6000}
+        onClose={() => setShowSuccess(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Alert onClose={() => setShowSuccess(false)} severity="success" sx={{ width: '100%' }}>
+          {successMessage}
+        </Alert>
+      </Snackbar>
+
+      {/* Error Notification */}
+      <Snackbar
+        open={!!error}
+        autoHideDuration={6000}
+        onClose={() => clearMessages()}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Alert onClose={() => clearMessages()} severity="error" sx={{ width: '100%' }}>
+          {error}
+        </Alert>
+      </Snackbar>
     </>
   );
 };

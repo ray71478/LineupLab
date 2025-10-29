@@ -68,6 +68,13 @@ class DataImporter:
         "Touch": "touches",
         "DK Pts": "actual_points",
         "Sal": "salary",
+        "P_yds": "pass_yards",
+        "P_TD": "pass_tds",
+        "Int": "interceptions",
+        "Ratt": "rush_attempts",
+        "TPRR": "tprr",
+        "S Yds Q": "sack_yards_q",
+        "S Yds S": "sack_yards_s",
     }
 
     def __init__(self, session: Session):
@@ -183,13 +190,13 @@ class DataImporter:
                     "Ratt": "int",
                     "Rsh_yds": "int",
                     "Rsh_td": "int",
-                    "CTGT": "int",
+                    "CTGT": "float",
                     "CTGT%": "float",
                     "Rec": "int",
                     "Rc_yds": "int",
                     "Rc_td": "int",
                     "Tot TD": "int",
-                    "Touch": "int",
+                    "Touch": "float",
                     "DK Pts": "float",
                     "Sal": "int",
                 }
@@ -197,8 +204,13 @@ class DataImporter:
             else:
                 raise DataImportError(f"Unknown source type: {source}")
 
+            # For comprehensive stats, only require core columns (optional columns will be handled gracefully)
+            if source.lower() == "comprehensive_stats":
+                required_columns = ["Player", "Tm", "Pos", "Wk"]
+            else:
+                required_columns = list(columns.keys())
+
             # Validate required columns exist
-            required_columns = list(columns.keys())
             self.validator.validate_columns(df, required_columns)
 
             # Validate and convert data types
@@ -249,19 +261,20 @@ class DataImporter:
                 player = {col: row.get(col) for col in columns.values()}
 
                 # Skip rows with missing critical data
-                if pd.isna(player.get("name")):
-                    logger.warning("Skipping player with missing name")
+                # Different sources use different keys for player name
+                name_key = "player_name" if source.lower() == "comprehensive_stats" else "name"
+                if pd.isna(player.get(name_key)):
+                    logger.warning(f"Skipping player with missing {name_key}")
                     continue
 
                 # Convert NaN to None
                 player = {k: (None if pd.isna(v) else v) for k, v in player.items()}
 
-                # For player pools: normalize ownership
+                # For player pools: process salary
                 if source.lower() in ["linestar", "draftkings"]:
-                    if player.get("ownership") is not None:
-                        player["ownership"] = self.validator.normalize_ownership(
-                            player["ownership"]
-                        )
+                    # Ensure salary is an integer (store as-is from file)
+                    if player.get("salary") is not None:
+                        player["salary"] = int(player["salary"])
 
                     # Generate player_key for player pools
                     player["player_key"] = self.matcher.generate_player_key(
