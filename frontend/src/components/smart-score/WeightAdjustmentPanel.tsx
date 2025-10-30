@@ -24,6 +24,7 @@ import {
   Divider,
   Collapse,
   IconButton,
+  Tooltip,
   useTheme,
   useMediaQuery,
 } from '@mui/material';
@@ -52,6 +53,11 @@ const WEIGHT_LABELS = {
   W6: 'Regression Penalty',
   W7: 'Vegas Context',
   W8: 'Matchup Adjustment',
+};
+
+// Disabled weights that have no effect
+const DISABLED_WEIGHTS = {
+  W8: 'Disabled - Pending data configuration',
 };
 
 export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
@@ -179,43 +185,72 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
 
       {/* Weight Sliders */}
       <Stack spacing={1.5}>
-        {(Object.keys(WEIGHT_LABELS) as Array<keyof WeightProfile>).map((key) => (
-          <Box key={key}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
-              <Typography variant="caption" sx={{ fontWeight: 500, fontSize: '0.75rem' }}>
-                {WEIGHT_LABELS[key]}
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem', minWidth: 45, textAlign: 'right' }}>
-                {localWeights[key].toFixed(3)}
-              </Typography>
-            </Box>
-            <Slider
-              value={localWeights[key]}
-              min={0}
-              max={1}
-              step={0.001}
-              onChange={(_, value) => handleWeightChange(key, value as number)}
-              size="small"
-              sx={{
-                color: '#ff6b35',
-                height: 4,
-                '& .MuiSlider-thumb': {
-                  width: 14,
-                  height: 14,
-                  '&:hover': {
-                    boxShadow: '0 0 0 6px rgba(255, 107, 53, 0.16)',
-                  },
-                },
-                '& .MuiSlider-track': {
-                  height: 3,
-                },
-                '& .MuiSlider-rail': {
-                  height: 3,
-                },
-              }}
-            />
-          </Box>
-        ))}
+        {(Object.keys(WEIGHT_LABELS) as Array<keyof WeightProfile>).map((key) => {
+          const isDisabled = key in DISABLED_WEIGHTS;
+          const disabledReason = DISABLED_WEIGHTS[key as keyof typeof DISABLED_WEIGHTS];
+
+          return (
+            <Tooltip
+              key={key}
+              title={isDisabled ? disabledReason : ''}
+              placement="right"
+            >
+              <Box
+                sx={{
+                  opacity: isDisabled ? 0.5 : 1,
+                  pointerEvents: isDisabled ? 'auto' : 'auto',
+                }}
+              >
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 500,
+                      fontSize: '0.75rem',
+                      color: isDisabled ? 'text.disabled' : 'inherit',
+                    }}
+                  >
+                    {WEIGHT_LABELS[key]}
+                    {isDisabled && ' (Disabled)'}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem', minWidth: 45, textAlign: 'right' }}>
+                    {localWeights[key].toFixed(3)}
+                  </Typography>
+                </Box>
+                <Slider
+                  value={localWeights[key]}
+                  min={0}
+                  max={1}
+                  step={0.001}
+                  onChange={(_, value) => {
+                    if (!isDisabled) {
+                      handleWeightChange(key, value as number);
+                    }
+                  }}
+                  disabled={isDisabled}
+                  size="small"
+                  sx={{
+                    color: isDisabled ? '#666' : '#ff6b35',
+                    height: 4,
+                    '& .MuiSlider-thumb': {
+                      width: 14,
+                      height: 14,
+                      '&:hover': {
+                        boxShadow: isDisabled ? 'none' : '0 0 0 6px rgba(255, 107, 53, 0.16)',
+                      },
+                    },
+                    '& .MuiSlider-track': {
+                      height: 3,
+                    },
+                    '& .MuiSlider-rail': {
+                      height: 3,
+                    },
+                  }}
+                />
+              </Box>
+            </Tooltip>
+          );
+        })}
       </Stack>
 
       <Divider sx={{ my: 2 }} />
