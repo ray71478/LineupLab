@@ -181,11 +181,7 @@ class DailyDataRefreshJob:
                 if not away_team or not home_team:
                     continue
 
-                # Calculate implied team total (ITT) from game total
-                # ITT = game_total / 2 (approximately)
-                itt = game_total / 2 if game_total else None
-
-                if itt is None:
+                if game_total is None:
                     self.logger.debug(f"No game total for {away_team} vs {home_team}")
                     continue
 
@@ -197,46 +193,65 @@ class DailyDataRefreshJob:
                     away_moneyline = first_book.get("away_moneyline")
                     home_moneyline = first_book.get("home_moneyline")
 
-                    # Update away team with all odds
+                    # Calculate true implied team totals using spread
+                    # ITT = (game_total - team_spread) / 2
+                    # Negative spread means favored, so they get higher ITT
+                    # Positive spread means underdog, so they get lower ITT
+                    away_itt = None
+                    home_itt = None
+
+                    if away_spread is not None:
+                        away_itt = (game_total - away_spread) / 2
+
+                    if home_spread is not None:
+                        home_itt = (game_total - home_spread) / 2
+
+                    # Upsert away team with all odds
                     self.db.execute(text("""
-                        UPDATE vegas_lines
-                        SET implied_team_total = :itt,
-                            opponent = :opponent,
-                            spread = :spread,
-                            over_under = :over_under,
-                            moneyline_odds = :moneyline,
-                            updated_at = :now
-                        WHERE week_id = :week_id AND team = :team
+                        INSERT INTO vegas_lines
+                        (week_id, team, opponent, implied_team_total, spread, over_under, moneyline_odds, home_team, fetched_at, created_at, updated_at)
+                        VALUES (:week_id, :team, :opponent, :itt, :spread, :over_under, :moneyline, :home_team, :now, :now, :now)
+                        ON CONFLICT (week_id, team) DO UPDATE SET
+                            opponent = EXCLUDED.opponent,
+                            implied_team_total = EXCLUDED.implied_team_total,
+                            spread = EXCLUDED.spread,
+                            over_under = EXCLUDED.over_under,
+                            moneyline_odds = EXCLUDED.moneyline_odds,
+                            updated_at = EXCLUDED.updated_at
                     """), {
-                        "itt": itt,
+                        "week_id": week_id,
+                        "team": away_team,
                         "opponent": home_team,
+                        "itt": away_itt,
                         "spread": away_spread,
                         "over_under": game_total,
                         "moneyline": away_moneyline,
+                        "home_team": False,
                         "now": datetime.utcnow(),
-                        "week_id": week_id,
-                        "team": away_team,
                     })
 
-                    # Update home team with all odds
+                    # Upsert home team with all odds
                     self.db.execute(text("""
-                        UPDATE vegas_lines
-                        SET implied_team_total = :itt,
-                            opponent = :opponent,
-                            spread = :spread,
-                            over_under = :over_under,
-                            moneyline_odds = :moneyline,
-                            updated_at = :now
-                        WHERE week_id = :week_id AND team = :team
+                        INSERT INTO vegas_lines
+                        (week_id, team, opponent, implied_team_total, spread, over_under, moneyline_odds, home_team, fetched_at, created_at, updated_at)
+                        VALUES (:week_id, :team, :opponent, :itt, :spread, :over_under, :moneyline, :home_team, :now, :now, :now)
+                        ON CONFLICT (week_id, team) DO UPDATE SET
+                            opponent = EXCLUDED.opponent,
+                            implied_team_total = EXCLUDED.implied_team_total,
+                            spread = EXCLUDED.spread,
+                            over_under = EXCLUDED.over_under,
+                            moneyline_odds = EXCLUDED.moneyline_odds,
+                            updated_at = EXCLUDED.updated_at
                     """), {
-                        "itt": itt,
+                        "week_id": week_id,
+                        "team": home_team,
                         "opponent": away_team,
+                        "itt": home_itt,
                         "spread": home_spread,
                         "over_under": game_total,
                         "moneyline": home_moneyline,
+                        "home_team": True,
                         "now": datetime.utcnow(),
-                        "week_id": week_id,
-                        "team": home_team,
                     })
 
                     stored += 1
