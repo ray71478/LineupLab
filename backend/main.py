@@ -57,6 +57,7 @@ import backend.routers.import_history_router as import_history_router_module
 import backend.routers.unmatched_players_router as unmatched_players_router_module
 import backend.routers.week_router as week_router_module
 import backend.routers.players_router as players_router_module
+import backend.routers.smart_score_router as smart_score_router_module
 
 # Override get_db in each router module
 import_router_module.get_db = get_db
@@ -64,8 +65,9 @@ import_history_router_module.get_db = get_db
 unmatched_players_router_module.get_db = get_db
 week_router_module.get_db = get_db
 players_router_module.get_db = get_db
+smart_score_router_module.get_db = get_db
 
-from backend.routers import import_router, import_history_router, unmatched_players_router, week_router, players_router
+from backend.routers import import_router, import_history_router, unmatched_players_router, week_router, players_router, smart_score_router
 
 # Create FastAPI app
 app = FastAPI(
@@ -141,6 +143,7 @@ app.include_router(import_history_router.router)
 app.include_router(unmatched_players_router.router)
 app.include_router(week_router.router)
 app.include_router(players_router.router)
+app.include_router(smart_score_router.router)
 
 logger.info("Cortex backend API initialized successfully")
 logger.info(f"Database: {DATABASE_URL}")
@@ -150,6 +153,7 @@ logger.info("  - /api/import-history (import_history_router)")
 logger.info("  - /api/unmatched-players (unmatched_players_router)")
 logger.info("  - /api/weeks (week_router)")
 logger.info("  - /api/players (players_router)")
+logger.info("  - /api/smart-score (smart_score_router)")
 
 
 if __name__ == "__main__":
