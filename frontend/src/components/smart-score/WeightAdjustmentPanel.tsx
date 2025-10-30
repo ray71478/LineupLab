@@ -107,8 +107,8 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
     <Paper
       sx={{
         p: { xs: 1.5, md: 2 },
-        backgroundColor: '#1a1a2e',
-        border: '1px solid rgba(255, 140, 66, 0.2)',
+        backgroundColor: '#0a0a0a',
+        border: '1px solid rgba(255, 107, 53, 0.2)',
         borderRadius: 2,
       }}
     >
@@ -131,7 +131,7 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
               color: 'text.secondary',
               padding: '4px',
               '&:hover': {
-                backgroundColor: 'rgba(255, 140, 66, 0.1)',
+                backgroundColor: 'rgba(255, 107, 53, 0.1)',
               },
             }}
           >
@@ -153,7 +153,7 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
 
         {/* Projection Source Selector */}
       <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-        <InputLabel sx={{ fontSize: '0.875rem' }}>Projection Source</InputLabel>
+        <InputLabel sx={{ fontSize: '0.75rem' }}>Projection Source</InputLabel>
           <Select
             value={localConfig.projection_source}
             label="Projection Source"
@@ -164,14 +164,14 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
               })
             }
             sx={{
-              fontSize: '0.875rem',
+              fontSize: '0.75rem',
               '& .MuiSelect-select': {
-                py: 1,
+                py: 1.2,
               },
             }}
           >
-          <MenuItem value="ETR" sx={{ fontSize: '0.875rem' }}>Establish The Run (ETR)</MenuItem>
-          <MenuItem value="LineStar" sx={{ fontSize: '0.875rem' }}>LineStar</MenuItem>
+          <MenuItem value="ETR" sx={{ fontSize: '0.75rem' }}>Establish The Run (ETR)</MenuItem>
+          <MenuItem value="LineStar" sx={{ fontSize: '0.75rem' }}>LineStar</MenuItem>
         </Select>
       </FormControl>
 
@@ -197,13 +197,13 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
               onChange={(_, value) => handleWeightChange(key, value as number)}
               size="small"
               sx={{
-                color: '#ff8c42',
+                color: '#ff6b35',
                 height: 4,
                 '& .MuiSlider-thumb': {
                   width: 14,
                   height: 14,
                   '&:hover': {
-                    boxShadow: '0 0 0 6px rgba(255, 140, 66, 0.16)',
+                    boxShadow: '0 0 0 6px rgba(255, 107, 53, 0.16)',
                   },
                 },
                 '& .MuiSlider-track': {
@@ -229,11 +229,11 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
           disabled={isCalculating}
           size="small"
           sx={{
-            backgroundColor: '#ff8c42',
-            fontSize: '0.875rem',
+            backgroundColor: '#ff6b35',
+            fontSize: '0.75rem',
             py: 0.75,
             '&:hover': {
-              backgroundColor: '#e65a2b',
+              backgroundColor: '#e55a25',
             },
           }}
         >
@@ -246,8 +246,14 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
           disabled={isCalculating}
           size="small"
           sx={{
-            fontSize: '0.875rem',
+            fontSize: '0.75rem',
             py: 0.75,
+            borderColor: '#ff6b35',
+            color: '#ff6b35',
+            '&:hover': {
+              borderColor: '#e55a25',
+              backgroundColor: 'rgba(255, 107, 53, 0.08)',
+            },
           }}
         >
           Reset to Default

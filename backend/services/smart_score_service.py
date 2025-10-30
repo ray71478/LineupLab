@@ -8,6 +8,9 @@ Provides methods for:
 - Position-specific trend calculations
 - Vegas context calculations
 - Regression risk detection
+- Real injury data integration from MySportsFeeds
+- Real Vegas ITT data integration
+- Real defensive ranking data integration
 
 Smart Score Formula:
   Smart Score = (projection × W1) +
@@ -23,7 +26,7 @@ Smart Score Formula:
 import logging
 import json
 import hashlib
-from typing import Optional, Dict, Tuple, List
+from typing import Optional, Dict, Tuple, List, Set
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from sqlalchemy import text
@@ -55,6 +58,7 @@ class PlayerData:
     floor: Optional[float]
     projection_source: Optional[str]
     opponent_rank_category: Optional[str]
+    injury_status: Optional[str] = None  # NEW: PROBABLE, QUESTIONABLE, DOUBTFUL, OUT
 
 
 @dataclass
@@ -80,6 +84,9 @@ class SmartScoreService:
     # Default league average ITT
     DEFAULT_LEAGUE_AVG_ITT = 22.5
 
+    # Injury status values for filtering (unavailable players)
+    UNAVAILABLE_INJURY_STATUSES = {"OUT", "DOUBTFUL"}
+
     def __init__(self, session: Session):
         """
         Initialize SmartScoreService.
@@ -93,6 +100,23 @@ class SmartScoreService:
         self._calculation_cache: Dict[str, Tuple[List[PlayerScoreResponse], datetime]] = {}
         self._cache_ttl = timedelta(minutes=5)  # 5 minute TTL
         self._insights_service = HistoricalInsightsService(session)
+
+    def is_player_available(self, injury_status: Optional[str]) -> bool:
+        """
+        Check if player is available based on injury status.
+
+        Filters out OUT and DOUBTFUL players. PROBABLE and QUESTIONABLE are playable.
+
+        Args:
+            injury_status: Injury status from player_pools.injury_status
+
+        Returns:
+            True if player is available (not OUT/DOUBTFUL), False otherwise
+        """
+        if injury_status is None:
+            return True  # No injury data means available
+
+        return injury_status not in self.UNAVAILABLE_INJURY_STATUSES
 
     def calculate_smart_score(
         self,
@@ -303,6 +327,8 @@ class SmartScoreService:
     ) -> Tuple[FactorResult, int]:
         """
         Calculate W5: Trend Adjustment (position-specific).
+
+        Uses real historical game data from MySportsFeeds API backfill.
 
         Formula: trend_percentage × W5
         Position-specific metrics:
@@ -537,10 +563,11 @@ class SmartScoreService:
         defaults: Dict[str, float],
     ) -> FactorResult:
         """
-        Calculate W7: Vegas Context.
+        Calculate W7: Vegas Context using real ITT from MySportsFeeds.
 
         Formula: ((team_itt / league_avg_itt) × W7)
-        Missing ITT: Use league average (22.5 default)
+        Uses real ITT from vegas_lines table populated by MySportsFeeds API.
+        Falls back to league average if real ITT unavailable.
 
         Args:
             player: Player data
@@ -553,7 +580,7 @@ class SmartScoreService:
         """
         league_avg_itt = defaults.get("league_avg_itt", self.DEFAULT_LEAGUE_AVG_ITT)
 
-        # Query team ITT from vegas_lines table
+        # Query team ITT from vegas_lines table (real API data)
         try:
             result = self.session.execute(
                 text("""
@@ -594,9 +621,10 @@ class SmartScoreService:
         self, player: PlayerData, weight: float
     ) -> FactorResult:
         """
-        Calculate W8: Matchup Adjustment.
+        Calculate W8: Matchup Adjustment using real defensive rankings from MySportsFeeds.
 
         Formula: category_value × W8
+        Uses real opponent defensive rank from team_defense_stats table.
         Category values: top_5 = +1.0, middle = 0.0, bottom_5 = -1.0
         Missing: Use "middle" (0.0)
 
@@ -681,7 +709,7 @@ class SmartScoreService:
             self.session.rollback()
             defaults["league_avg_ownership"] = 0.0
 
-        # Calculate league average ITT
+        # Calculate league average ITT from real API data
         try:
             result = self.session.execute(
                 text("""
@@ -735,8 +763,9 @@ class SmartScoreService:
         config: ScoreConfig,
     ) -> List[PlayerScoreResponse]:
         """
-        Calculate Smart Scores for all players in a week.
+        Calculate Smart Scores for all available players in a week.
 
+        Filters out unavailable players (OUT, DOUBTFUL) based on real injury data.
         Uses caching to avoid redundant calculations for same week/weights/config.
 
         Args:
@@ -760,7 +789,7 @@ class SmartScoreService:
 
         logger.debug(f"Cache MISS for week {week_id}, calculating...")
 
-        # Fetch all players for the week
+        # Fetch all players for the week including injury status
         players_query = text("""
             SELECT
                 id,
@@ -774,7 +803,8 @@ class SmartScoreService:
                 ceiling,
                 floor,
                 projection_source,
-                opponent_rank_category
+                opponent_rank_category,
+                injury_status
             FROM player_pools
             WHERE week_id = :week_id
             ORDER BY position, name
@@ -799,8 +829,16 @@ class SmartScoreService:
             current_week_num = None
 
         results = []
+        excluded_players: List[Tuple[str, str]] = []  # (name, reason)
 
         for row in rows:
+            # Check injury status and filter unavailable players
+            injury_status = row.injury_status
+            if not self.is_player_available(injury_status):
+                excluded_players.append((row.name, f"Unavailable ({injury_status})"))
+                logger.debug(f"Excluding {row.name} ({row.team}) - {injury_status}")
+                continue
+
             player_data = PlayerData(
                 player_id=row.id,
                 player_key=row.player_key,
@@ -814,6 +852,7 @@ class SmartScoreService:
                 floor=row.floor,
                 projection_source=row.projection_source,
                 opponent_rank_category=row.opponent_rank_category,
+                injury_status=row.injury_status,
             )
 
             smart_score, breakdown, games_count, regression_risk = self.calculate_smart_score(
@@ -861,7 +900,7 @@ class SmartScoreService:
                     # Only include if we have at least one partner with correlation > 0.5
                     if stack_partners:
                         stack_partners = [
-                            p for p in stack_partners 
+                            p for p in stack_partners
                             if p.get("correlation") is not None and p.get("correlation", 0) > 0.5
                         ]
                         if not stack_partners:
@@ -896,13 +935,22 @@ class SmartScoreService:
 
             results.append(player_response)
 
+        # Log excluded players
+        if excluded_players:
+            logger.info(f"Excluded {len(excluded_players)} unavailable players from Smart Score calculations:")
+            for name, reason in excluded_players[:10]:  # Log first 10
+                logger.debug(f"  - {name}: {reason}")
+            if len(excluded_players) > 10:
+                logger.debug(f"  ... and {len(excluded_players) - 10} more")
+
         # Cache results
         self._calculation_cache[cache_key] = (results, datetime.now())
-        
+
         # Clean up expired cache entries periodically
         if len(self._calculation_cache) > 100:  # Limit cache size
             self._cleanup_expired_cache()
 
+        logger.info(f"Calculated Smart Scores for {len(results)} available players (excluded {len(excluded_players)})")
         return results
 
     def _cleanup_expired_cache(self):
@@ -931,4 +979,3 @@ class SmartScoreService:
             # Simple approach: clear all cache (can be optimized later)
             self._calculation_cache.clear()
             logger.info(f"Cleared calculation cache for week {week_id}")
-

@@ -525,6 +525,21 @@ class HistoricalInsightsService:
                 except Exception:
                     correlation = None
 
+            return {
+                "correlation": correlation,
+                "games_count": len(qb_points) if 'qb_points' in locals() else 0,
+                "avg_qb_points": statistics.mean(qb_points) if 'qb_points' in locals() else None,
+                "avg_wr_points": statistics.mean(wr_points) if 'wr_points' in locals() else None,
+            }
+        except Exception as e:
+            logger.error(f"Error calculating stack correlation: {str(e)}")
+            return {
+                "correlation": None,
+                "games_count": 0,
+                "avg_qb_points": None,
+                "avg_wr_points": None,
+            }
+
     def get_top_stack_partners(
         self, player_key: str, position: str, team: str, season: int, week_id: int, limit: int = 3
     ) -> List[Dict[str, Any]]:

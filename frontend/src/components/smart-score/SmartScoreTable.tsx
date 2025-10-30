@@ -117,7 +117,7 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         size: 150,
         cell: ({ row }) => (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+            <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
               {row.original.name}
             </Typography>
             <MissingDataIndicator
@@ -132,7 +132,7 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         header: 'Team',
         size: 60,
         cell: ({ getValue }) => (
-          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+          <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
             {getValue() as string}
           </Typography>
         ),
@@ -182,7 +182,7 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
           const salary = getValue() as number;
           // Display as stored in spreadsheet (e.g., 7300 = $7,300)
           return (
-            <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+            <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
               ${salary?.toLocaleString('en-US') || '-'}
             </Typography>
           );
@@ -194,7 +194,7 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         header: 'Proj',
         size: 70,
         cell: ({ getValue }) => (
-          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+          <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
             {(getValue() as number)?.toFixed(2) || '-'}
           </Typography>
         ),
@@ -209,14 +209,14 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
           // Display exactly as stored in spreadsheet (all values are percentages)
           // 0.60 = 0.60%, 16.9 = 16.9%
           if (ownership === null || ownership === undefined) {
-            return <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>-</Typography>;
+            return <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>-</Typography>;
           }
           // Format with appropriate decimal places
           const formatted = ownership % 1 === 0 
             ? ownership.toFixed(0) 
             : ownership.toFixed(1);
           return (
-            <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+            <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
               {formatted}%
             </Typography>
           );
@@ -248,7 +248,7 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
           const cv = getValue() as number | null | undefined;
           const player = row.original;
           if (cv === null || cv === undefined) {
-            return <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>-</Typography>;
+            return <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>-</Typography>;
           }
           // Lower CV = more consistent (better)
           // Color code: < 0.3 = green, 0.3-0.6 = yellow, > 0.6 = red
@@ -261,7 +261,7 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
             <Typography 
               variant="body2" 
               sx={{ 
-                fontSize: '0.875rem',
+                fontSize: '0.75rem',
                 color: getColor(),
                 fontWeight: cv < 0.3 ? 600 : 400,
               }}
@@ -279,10 +279,10 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         cell: ({ getValue }) => {
           const avg = getValue() as number | null | undefined;
           if (avg === null || avg === undefined) {
-            return <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>-</Typography>;
+            return <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>-</Typography>;
           }
           return (
-            <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+            <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
               {avg.toFixed(1)}
             </Typography>
           );
@@ -296,7 +296,7 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         cell: ({ getValue }) => {
           const trend = getValue() as 'up' | 'down' | 'stable' | null | undefined;
           if (!trend) {
-            return <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>-</Typography>;
+            return <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>-</Typography>;
           }
           const getIcon = () => {
             if (trend === 'up') return '▲';
@@ -312,7 +312,7 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
             <Typography 
               variant="body2" 
               sx={{ 
-                fontSize: '0.875rem',
+                fontSize: '0.75rem',
                 color: getColor(),
                 fontWeight: 600,
               }}
@@ -333,7 +333,7 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <UsageWarningBadge warnings={player.usage_warnings} />
               {!player.usage_warnings && (
-                <Typography variant="body2" sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
+                <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
                   -
                 </Typography>
               )}
@@ -342,23 +342,12 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         },
       },
       {
-        id: 'projection_source',
-        accessorKey: 'projection_source',
-        header: 'Source',
-        size: 70,
-        cell: ({ getValue }) => (
-          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-            {getValue() as string || '-'}
-          </Typography>
-        ),
-      },
-      {
         id: 'games_with_20_plus_snaps',
         accessorKey: 'games_with_20_plus_snaps',
         header: '20+ Snaps',
         size: 70,
         cell: ({ getValue }) => (
-          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+          <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
             {getValue() !== null && getValue() !== undefined ? String(getValue()) : '-'}
           </Typography>
         ),
@@ -380,7 +369,7 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
               }
             />
           ) : (
-            <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>-</Typography>
+            <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>-</Typography>
           );
         },
       },
@@ -420,8 +409,8 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
   return (
     <Paper
       sx={{
-        backgroundColor: '#1a1a2e',
-        border: '1px solid rgba(255, 140, 66, 0.2)',
+        backgroundColor: '#0a0a0a',
+        border: '1px solid rgba(255, 107, 53, 0.2)',
         borderRadius: 2,
         overflow: 'hidden',
       }}
@@ -430,7 +419,7 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
       <Box
         sx={{
           p: 1.5,
-          borderBottom: '1px solid rgba(255, 140, 66, 0.1)',
+          borderBottom: '1px solid rgba(255, 107, 53, 0.2)',
           display: 'flex',
           alignItems: 'center',
           gap: 2,
@@ -438,12 +427,12 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         }}
       >
         <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel sx={{ fontSize: '0.875rem' }}>Position</InputLabel>
+          <InputLabel sx={{ fontSize: '0.75rem' }}>Position</InputLabel>
           <Select
             value={positionFilter}
             label="Position"
             onChange={(e) => setPositionFilter(e.target.value)}
-            sx={{ fontSize: '0.875rem', height: 32 }}
+            sx={{ fontSize: '0.75rem', height: 32 }}
           >
             <MenuItem value="all">All Positions</MenuItem>
             {positions.map((pos) => (
@@ -455,12 +444,12 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         </FormControl>
         
         <FormControl size="small" sx={{ minWidth: 140 }}>
-          <InputLabel sx={{ fontSize: '0.875rem' }}>Consistency</InputLabel>
+          <InputLabel sx={{ fontSize: '0.75rem' }}>Consistency</InputLabel>
           <Select
             value={consistencyFilter}
             label="Consistency"
             onChange={(e) => setConsistencyFilter(e.target.value)}
-            sx={{ fontSize: '0.875rem', height: 32 }}
+            sx={{ fontSize: '0.75rem', height: 32 }}
           >
             <MenuItem value="all">All</MenuItem>
             <MenuItem value="low">Low CV (&lt;0.3)</MenuItem>
@@ -470,12 +459,12 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         </FormControl>
         
         <FormControl size="small" sx={{ minWidth: 130 }}>
-          <InputLabel sx={{ fontSize: '0.875rem' }}>Value Trend</InputLabel>
+          <InputLabel sx={{ fontSize: '0.75rem' }}>Value Trend</InputLabel>
           <Select
             value={valueTrendFilter}
             label="Value Trend"
             onChange={(e) => setValueTrendFilter(e.target.value)}
-            sx={{ fontSize: '0.875rem', height: 32 }}
+            sx={{ fontSize: '0.75rem', height: 32 }}
           >
             <MenuItem value="all">All</MenuItem>
             <MenuItem value="up">Trending Up ▲</MenuItem>
@@ -493,7 +482,12 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         <Table stickyHeader size="small" sx={{ '& .MuiTableCell-root': { py: 0.75 } }}>
           <TableHead>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
+              <TableRow
+                key={headerGroup.id}
+                sx={{
+                  backgroundColor: '#1a1a1a',
+                }}
+              >
                 {headerGroup.headers.map((header) => {
                   const isSortable = header.column.getCanSort();
                   const isSorted = header.column.getIsSorted();
@@ -508,11 +502,11 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
                         cursor: isSortable ? 'pointer' : 'default',
                         userSelect: 'none',
                         backgroundColor: isSmartScore
-                          ? 'rgba(255, 140, 66, 0.15)'
-                          : 'inherit',
-                        borderLeft: isSmartScore ? '2px solid #ff8c42' : 'none',
-                        borderRight: isSmartScore ? '2px solid #ff8c42' : 'none',
-                        '&:hover': isSortable ? { backgroundColor: 'rgba(255, 255, 255, 0.05)' } : {},
+                          ? 'rgba(255, 107, 53, 0.2)'
+                          : '#1a1a1a',
+                        borderLeft: isSmartScore ? '2px solid #ff6b35' : 'none',
+                        borderRight: isSmartScore ? '2px solid #ff6b35' : 'none',
+                        '&:hover': isSortable ? { backgroundColor: isSmartScore ? 'rgba(255, 107, 53, 0.3)' : 'rgba(255, 255, 255, 0.03)' } : {},
                       }}
                       onClick={header.column.getToggleSortingHandler()}
                     >
@@ -563,13 +557,12 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
                     <TableCell
                       key={cell.id}
                       sx={{
-                        fontSize: '0.875rem',
+                        fontSize: '0.75rem',
                         backgroundColor: isSmartScore
-                          ? 'rgba(255, 140, 66, 0.1)'
+                          ? 'rgba(255, 107, 53, 0.08)'
                           : 'inherit',
-                        borderLeft: isSmartScore ? '2px solid #ff8c42' : 'none',
-                        borderRight: isSmartScore ? '2px solid #ff8c42' : 'none',
-                        fontWeight: isSmartScore ? 600 : 'normal',
+                        borderLeft: isSmartScore ? '2px solid #ff6b35' : 'none',
+                        borderRight: isSmartScore ? '2px solid #ff6b35' : 'none',
                       }}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

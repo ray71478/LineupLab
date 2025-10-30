@@ -9,7 +9,6 @@ const NavigationMenu: React.FC = () => {
   const isActive = (path: string) => location.pathname === path
 
   const navLinks = [
-    { label: 'Players', path: '/players' },
     { label: 'Smart Score', path: '/smart-score' },
     { label: 'Lineups', path: '/lineups', disabled: true },
   ]

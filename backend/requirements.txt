@@ -36,6 +36,11 @@ python-dotenv>=1.0.0,<1.1.0  # Load environment variables from .env file
 pytz>=2023.3  # Timezone support for NFL schedule
 
 # ------------------------------------------
+# Background Job Scheduling
+# ------------------------------------------
+APScheduler>=3.10.0,<3.11.0  # Background job scheduler
+
+# ------------------------------------------
 # Testing & Quality Assurance
 # ------------------------------------------
 pytest>=7.4.3,<8.0.0
