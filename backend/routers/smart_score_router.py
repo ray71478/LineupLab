@@ -330,3 +330,48 @@ async def delete_weight_profile(
             detail=f"Failed to delete weight profile: {str(e)}",
         )
 
+
+@router.post("/cache/invalidate")
+async def invalidate_smart_score_cache(
+    week_id: int | None = None,
+    db: Any = Depends(_get_current_db_dependency),
+) -> dict[str, Any]:
+    """
+    Invalidate Smart Score calculation cache.
+
+    This endpoint clears cached Smart Score calculations so that fresh calculations
+    are performed with the latest weights/data. Use this after:
+    - Updating weight profiles
+    - Refreshing Vegas data
+    - Loading new player data
+
+    Args:
+        week_id: Optional - clear cache for specific week only. If None, clears all cache.
+        db: Database session
+
+    Returns:
+        Dictionary with success status and message
+    """
+    try:
+        service = SmartScoreService(db)
+        service.invalidate_cache(week_id=week_id)
+
+        if week_id:
+            message = f"Cleared Smart Score cache for week {week_id}"
+        else:
+            message = "Cleared all Smart Score cache"
+
+        logger.info(message)
+
+        return {
+            "success": True,
+            "message": message,
+        }
+
+    except Exception as e:
+        logger.error(f"Error invalidating Smart Score cache: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to invalidate cache: {str(e)}",
+        )
+
