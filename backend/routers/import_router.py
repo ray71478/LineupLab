@@ -100,7 +100,7 @@ async def import_linestar(
 
     Args:
         file: XLSX file upload
-        week_id: Selected week ID from header
+        week_id: Selected week number (1-18) from header
         detected_week: Week detected from filename (optional)
         db: Database session
 
@@ -111,6 +111,27 @@ async def import_linestar(
         # Validate inputs
         validate_week_number(week_id)
         validate_file_extension(file.filename)
+
+        # Resolve week_id (week number) to actual database week ID
+        # Get the most recent season with this week number
+        week_result = db.execute(
+            text("""
+                SELECT id, season FROM weeks
+                WHERE week_number = :week_number
+                ORDER BY season DESC
+                LIMIT 1
+            """),
+            {"week_number": week_id}
+        ).fetchone()
+        
+        if not week_result:
+            return {
+                "success": False,
+                "error": f"Week {week_id} not found in database. Please ensure the week exists before importing.",
+            }
+        
+        actual_week_id = week_result[0]
+        season = week_result[1]
 
         # Check for week mismatch
         detected = detect_week_from_filename(file.filename, "linestar")
@@ -200,24 +221,24 @@ async def import_linestar(
             DELETE FROM player_pools
             WHERE week_id = :week_id AND source = 'LineStar'
         """)
-        db.execute(stmt, {"week_id": week_id})
+        db.execute(stmt, {"week_id": actual_week_id})
 
         # Bulk insert matched players
         if matched_players:
             insert_stmt = text("""
                 INSERT INTO player_pools
                 (week_id, player_key, name, team, position, salary, projection,
-                 ownership, ceiling, floor, notes, source, uploaded_at)
+                 ownership, ceiling, floor, notes, source, uploaded_at, projection_source, opponent_rank_category)
                 VALUES (:week_id, :player_key, :name, :team, :position, :salary,
                         :projection, :ownership, :ceiling, :floor, :notes, :source,
-                        CURRENT_TIMESTAMP)
+                        CURRENT_TIMESTAMP, :projection_source, :opponent_rank_category)
             """)
 
             for player in matched_players:
                 db.execute(
                     insert_stmt,
                     {
-                        "week_id": week_id,
+                        "week_id": actual_week_id,
                         "player_key": player.get("player_key", ""),
                         "name": player.get("name", ""),
                         "team": player.get("team", ""),
@@ -229,12 +250,14 @@ async def import_linestar(
                         "floor": player.get("floor"),
                         "notes": player.get("notes"),
                         "source": "LineStar",
+                        "projection_source": player.get("projection_source"),
+                        "opponent_rank_category": player.get("opponent_rank_category"),
                     },
                 )
 
         # Create import history record
         import_id = history_tracker.create_import_record(
-            week_id=week_id,
+            week_id=actual_week_id,
             source="LineStar",
             file_name=file.filename,
             player_count=len(matched_players),
@@ -255,7 +278,7 @@ async def import_linestar(
         """)
         previous = db.execute(
             stmt,
-            {"week_id": week_id, "current_id": import_id}
+            {"week_id": actual_week_id, "current_id": import_id}
         ).scalar()
 
         if previous:
@@ -280,10 +303,17 @@ async def import_linestar(
         }
     except Exception as e:
         db.rollback()
-        logger.error(f"LineStar import failed: {str(e)}", exc_info=True)
+        error_msg = str(e)
+        logger.error(f"LineStar import failed: {error_msg}", exc_info=True)
+        # Return more specific error message for debugging
+        if "not found" in error_msg.lower() or "does not exist" in error_msg.lower():
+            return {
+                "success": False,
+                "error": f"Week {week_id} not found in database. Please ensure the week exists before importing.",
+            }
         return {
             "success": False,
-            "error": "An unexpected error occurred during import. Please try again.",
+            "error": f"An unexpected error occurred during import: {error_msg}. Please try again.",
         }
     finally:
         db.close()

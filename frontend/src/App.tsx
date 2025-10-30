@@ -1,4 +1,50 @@
 /**
+ * Navigation Menu Component
+ * Displays navigation links in the header
+ */
+const NavigationMenu: React.FC = () => {
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const isActive = (path: string) => location.pathname === path
+
+  const navLinks = [
+    { label: 'Players', path: '/players' },
+    { label: 'Smart Score', path: '/smart-score' },
+    { label: 'Lineups', path: '/lineups', disabled: true },
+  ]
+
+  return (
+    <Stack direction="row" spacing={1} sx={{ display: { xs: 'none', md: 'flex' } }}>
+      {navLinks.map((link) => (
+        <Button
+          key={link.path}
+          onClick={() => !link.disabled && navigate(link.path)}
+          disabled={link.disabled}
+          sx={{
+            color: isActive(link.path) ? '#ff6b35' : '#ffffff',
+            fontWeight: isActive(link.path) ? 600 : 400,
+            textTransform: 'none',
+            fontSize: '0.9375rem',
+            px: 2,
+            py: 1,
+            borderRadius: '8px',
+            '&:hover': {
+              backgroundColor: 'rgba(255, 107, 53, 0.1)',
+            },
+            '&.Mui-disabled': {
+              opacity: 0.5,
+            },
+          }}
+        >
+          {link.label}
+        </Button>
+      ))}
+    </Stack>
+  )
+}
+
+/**
  * Main Application Component
  *
  * Integrates:
@@ -10,8 +56,8 @@
  */
 
 import React, { Suspense, useEffect } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
-import { Box, CircularProgress } from '@mui/material'
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
+import { Box, CircularProgress, Button, Stack } from '@mui/material'
 import MainLayout from '@/components/layout/MainLayout'
 import ImportDataButton from '@/components/import/ImportDataButton'
 import WeekSelector from '@/components/layout/WeekSelector'
@@ -110,6 +156,7 @@ function App() {
     <MainLayout
       menuItems={
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          <NavigationMenu />
           <WeekSelector onWeekChange={undefined} showMetadata={false} />
           <ImportDataButton onSuccess={handleImportSuccess} onError={handleImportError} />
         </Box>
