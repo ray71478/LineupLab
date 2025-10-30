@@ -804,7 +804,7 @@ class SmartScoreService:
                 floor,
                 projection_source,
                 opponent_rank_category,
-                injury_status
+                COALESCE(injury_status, NULL) as injury_status
             FROM player_pools
             WHERE week_id = :week_id
             ORDER BY position, name
