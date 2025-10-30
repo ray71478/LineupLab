@@ -47,6 +47,17 @@ export const RefreshMySportsFeedsButton: React.FC<RefreshMySportsFeedsButtonProp
     const refreshResult = await refresh();
 
     if (refreshResult?.success) {
+      // After successful data refresh, invalidate Smart Score cache
+      // so that fresh calculations use the updated Vegas data
+      try {
+        await fetch('/api/smart-score/cache/invalidate', {
+          method: 'POST',
+        });
+      } catch (cacheError) {
+        console.warn('Failed to invalidate Smart Score cache:', cacheError);
+        // Don't fail the refresh if cache invalidation fails
+      }
+
       setShowSuccess(true);
       onSuccess?.();
     } else if (error || !refreshResult?.success) {

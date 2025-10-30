@@ -105,7 +105,18 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
     onConfigChange?.(newConfig);
   };
 
-  const handleApply = () => {
+  const handleApply = async () => {
+    // First, invalidate Smart Score cache so fresh calculations use new weights
+    try {
+      await fetch('/api/smart-score/cache/invalidate', {
+        method: 'POST',
+      });
+    } catch (cacheError) {
+      console.warn('Failed to invalidate Smart Score cache:', cacheError);
+      // Don't block the apply if cache invalidation fails
+    }
+
+    // Then call the original apply handler
     onApply();
   };
 
