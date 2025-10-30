@@ -81,7 +81,7 @@ class CalculateScoreRequest(BaseModel):
 
 class PlayerScoreResponse(BaseModel):
     """Response schema for a player with Smart Score."""
-    
+
     player_id: int = Field(..., description="Player pool ID")
     player_key: str = Field(..., description="Player key")
     name: str = Field(..., description="Player name")
@@ -96,16 +96,20 @@ class PlayerScoreResponse(BaseModel):
     games_with_20_plus_snaps: Optional[int] = Field(None, description="Games with 20+ snaps")
     regression_risk: bool = Field(default=False, description="Regression risk flag (WR only)")
     score_breakdown: Optional[ScoreBreakdown] = Field(None, description="Detailed score breakdown")
-    
+
+    # Vegas context data
+    implied_team_total: Optional[float] = Field(None, description="Vegas implied team total (ITT) - team's expected scoring")
+    over_under: Optional[float] = Field(None, description="Vegas game total (over/under)")
+
     # Historical insights
     consistency_score: Optional[float] = Field(None, description="Consistency score (CV, lower is more consistent)")
     opponent_matchup_avg: Optional[float] = Field(None, description="Average points vs this week's opponent")
     salary_efficiency_trend: Optional[str] = Field(None, description="Salary efficiency trend: 'up', 'down', or 'stable'")
     usage_warnings: Optional[List[str]] = Field(None, description="Usage pattern warnings (declining snaps/touches)")
-    
+
     # Stack correlation metadata (not affecting Smart Score)
     stack_partners: Optional[List[Dict[str, Any]]] = Field(None, description="Top stack correlation partners (e.g., QB-WR pairs with correlation > 0.5)")
-    
+
     class Config:
         from_attributes = True
 

@@ -1026,6 +1026,25 @@ class SmartScoreService:
                 # For now, skip if we don't have opponent info readily available
                 # TODO: Enhance to lookup opponent from NFL schedule
 
+                # Vegas context data
+                implied_team_total = None
+                over_under = None
+                try:
+                    vegas_result = self.session.execute(
+                        text("""
+                            SELECT implied_team_total, over_under
+                            FROM vegas_lines
+                            WHERE week_id = :week_id AND team = :team
+                            LIMIT 1
+                        """),
+                        {"week_id": week_id, "team": player_data.team},
+                    ).fetchone()
+
+                    if vegas_result:
+                        implied_team_total, over_under = vegas_result
+                except Exception as e:
+                    logger.debug(f"Could not fetch Vegas data for {player_data.name}: {e}")
+
             # Create response
             player_response = PlayerScoreResponse(
                 player_id=player_data.player_id,
@@ -1042,6 +1061,8 @@ class SmartScoreService:
                 games_with_20_plus_snaps=games_count,
                 regression_risk=regression_risk,
                 score_breakdown=breakdown,
+                implied_team_total=implied_team_total,
+                over_under=over_under,
                 consistency_score=consistency_score,
                 opponent_matchup_avg=opponent_matchup_avg,
                 salary_efficiency_trend=salary_efficiency_trend,
