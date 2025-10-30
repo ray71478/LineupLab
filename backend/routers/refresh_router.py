@@ -12,10 +12,12 @@ from typing import Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from backend.database import get_db
 from backend.scheduler.daily_refresh_job import DailyDataRefreshJob
 
 logger = logging.getLogger(__name__)
+
+# get_db will be injected by main.py
+get_db = None
 
 router = APIRouter(prefix="/api/refresh", tags=["refresh"])
 
