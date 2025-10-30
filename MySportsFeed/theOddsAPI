@@ -1,0 +1,11 @@
+The Odds API (Recommended)
+This is probably your best bet for a free option:
+
+Free Tier: 500 requests/month
+Endpoint: https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds
+Coverage: Moneylines, spreads, totals from major books (DraftKings, FanDuel, BetMGM, Caesars, etc.)
+Format: JSON
+Documentation: https://the-odds-api.com/sports-odds-data/nfl-odds.html
+
+Example Request:
+GET https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds?regions=us&markets=h2h,spreads,totals&oddsFormat=american&apiKey=YOUR_API_KEY

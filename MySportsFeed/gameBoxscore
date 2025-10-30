@@ -1,0 +1,271 @@
+Game Boxscore (v2.1)
+A boxscore for a game including game details and team/player stats.
+
+
+*Addon Required*: DETAILED
+
+
+URL Examples:
+
+JSON:
+XML:
+XSD (for XML): 
+
+PULL URL Syntax
+Response
+Code Samples
+
+The following describes each property of the feed's returned response. Static samples are no longer available without making a valid request to the API.
+
+Properties
+Name	Details
+lastUpdatedOn	
+Indicates the time that this feed's content was generated. Specified in ET timezone. In some cases this will be set to null when the feed has been craeted for the first time. This is not intended behaviour and will be corrected when time allows.
+
+game	
+Details for the specified game.
+
+game.date	
+The scheduled start date, specifed in format YYYY-MM-DD.
+
+game.time	
+The scheduled start time in ET timezone, specifed in 12-hour format.
+
+game.awayTeam	
+Identifying details for the away (visiting) team.
+
+game.homeTeam	
+Identifying details for the home team.
+
+quarterSummary	
+Contains a scoring summary of each quarter played or in progress.
+
+quarterSummary.quarter	
+An array of quarters played or in progress.
+
+quarterSummary.quarter.@number	
+The quarter number.
+
+quarterSummary.quarter.awayScore,
+quarterSummary.quarter.homeScore	
+Each team's respective total score thus far in this quarter.
+
+quarterSummary.quarter.scoring	
+Holds all scoring plays for this quarter. Can be empty (or null).
+
+quarterSummary.quarter.scoring
+  .scoringPlay	
+An array of all the scoring plays for this quarter.
+
+quarterSummary.quarter.scoring
+  .scoringPlay.time	
+The elapsed time of the scoring play in this quarter, expressed as mm:ss.
+
+quarterSummary.quarter.scoring
+  .scoringPlay.teamAbbreviation	
+The abbreviation of the scoring team.
+
+quarterSummary.quarter.scoring
+  .scoringPlay.playDescription	
+The full description of the scoring, including involved player names.
+
+quarterSummary.quarterTotals	
+Summarizes the team totals for all quarters.
+
+quarterSummary.quarterTotals
+  .awayScore,
+quarterSummary.quarterTotals
+  .homeScore	
+The total score overall for the respective team.
+
+awayTeam,
+homeTeam	
+Contains summaries for each team's stats, along with individual players and their corresponding stats.
+
+awayTeam.awayTeamStats,
+homeTeam.homeTeamStats	
+A list of all the team's stats for this game thus far. If a list of comma-delimited stats abbreviations has been specified, only those applicable stats will be listed.
+
+For each stat, the Name, Abbreviation, and Category will be present along with it's value.
+
+Possible categories are:
+Passing
+Rushing
+Receiving
+Tackles
+Interceptions
+Fumbles
+Kickoff Returns
+Punt Returns
+Field Goals
+PAT
+Kickoffs
+Punting
+2PT
+Team Stats
+Team Standings
+awayTeam.awayPlayers
+  .playerEntry,
+homeTeam.homePlayers
+  .playerEntry	
+An array of player entries and corresponding game stats for the respective team.
+
+awayTeam.awayPlayers
+  .playerEntry.player,
+homeTeam.homePlayers
+  .playerEntry.player	
+Identifies the player.
+
+The player's JerseyNumber could possibly be empty (or null).
+
+Possible positions are:
+QB
+RB
+FB
+WR
+TE
+C
+G
+T
+K
+DE
+OT
+DT
+NT
+LB
+ILB
+MLB
+OLB
+DB
+CB
+FS
+SS
+P
+LS
+awayTeam.awayPlayers
+  .playerEntry.stats,
+homeTeam.homePlayers
+  .playerEntry.stats	
+A list of the player's stats for the game. If a list of comma-delimited stats abbreviations has been specified, only those applicable stats will be listed.
+
+For each stat, the Name, Abbreviation, and Category will be present along with it's value.
+
+An entry for GamesPlayed will always be listed first.
+
+Possible categories are:
+Passing
+Rushing
+Receiving
+Tackles
+Interceptions
+Fumbles
+Kickoff Returns
+Punt Returns
+Field Goals
+PAT
+Kickoffs
+Punting
+2PT
+
+Issue a HTTPS GET request to:
+
+https://api.mysportsfeeds.com/v2.1/pull/nfl/{season}/games/{game}/boxscore.{format}
+with optional parameters:
+
+teamstats={list-of-team-stats} (filter team stats)
+playerstats={list-of-player-stats} (filter player stats)
+sort={sort-specifier} (sort the feed's content)
+offset={offset-specifier} (filter results starting at the given offset)
+limit={limit-specifier} (limit the maximum # of results)
+force={force-if-not-modified} (force content)
+
+where:
+
+Parameter	Description
+{season}	
+a value obtained by concatenating
+
+(season start year) + "-" +
+(season end year) + "-" +
+either "regular" or "playoff", depending on the season's type
+
+Note: if the starting and ending years are the same, you can just specify the single year.
+
+You can also use the special keywords current, latest or upcoming.
+
+Using current relates to the current in-progress season (whether regular or playoff). If a current season is not in progress (offseason), you'll receive an empty response with response code 400. Using latest will return the latest season (whether regular or playoff).
+
+Note that current and latest will in fact apply to the same season if a season is in progress.
+
+Using upcoming will only apply to a season which has been added, but has not yet actually started. This applies in cases where the upcoming season's game schedule is available, but there is no curent season underway (offseason, or between regular and playoff seasons). If no applicable season is available, an empty 400 response is returned.
+
+Valid examples are:
+
+2016-2017-regular
+2016-playoff
+current
+latest
+upcoming
+{game}	
+Must represent a valid game. Specify this value by concatenating
+
+(game date as YYYYMMDD) + "-" +
+(away team abbreviation) + "-" +
+(home team abbreviation)
+
+Optionally, in cases where multiple games are scheduled on the same day between the same teams (MLB double-headers in particular), you will also need to specify the index of the game based on start time. This is only required if there are multiple applicable games between the teams on the same day.
+
+(game date as YYYYMMDD) + "-" +
+(away team abbreviation) + "-" +
+(home team abbreviation) + "-" (game index)
+
+You can also use the numerical ID, which can be obtained from any of the other game-related feeds.
+
+Note: If you specify a non-existent game, or an exact match cannot be otherwise found, then a 404 response code will be returned. Valid examples are:
+
+20161221-BAL-DET
+20161221-BAL-DET-1
+20161221-BAL-DET-2
+{format}	one of csv, xml, or json
+teamstats={list-of-team-stats}	(optional) comma-delimited list with one or more team stat abbreviations.
+
+If this parameter is omitted, by default ALL stats are included.
+To include NO stats, set to none.
+
+A full list of available stats and their abbreviations can be obtained by requesting the Current Season feed.
+playerstats={list-of-player-stats}	(optional) comma-delimited list with one or player stat abbreviations.
+
+If this parameter is omitted, by default ALL stats are included.
+To include NO stats, set to none.
+
+A full list of available stats and their abbreviations can be obtained by requesting the Current Season feed.
+sort={sort-specifier}	(optional) Specifies a sorting order for the results. Format is:
+
+{prefix}.{value}.{sort-order}
+
+The {sort-order} is optional, and must be either "A" for Ascending, or "D" for descending.
+
+Valid values for this feed are:
+game.starttime
+player.lastname
+player.age
+player.birthplace
+player.birthdate
+player.height
+player.weight
+player.position
+player.injury
+player.team
+player.number
+team.city
+team.name
+team.abbr
+offset={offset-specifier}	(optional) Specifies the starting offset for the results. Defaults to 0.
+limit={limit-specifier}	(optional) Specifies the maxmimum number of results. If not specified, all results are returned.
+force={force-if-not-modified}	(optional) Valid values are true or false.
+
+Specifies whether to "force" content to be returned and avoid an empty 304 response. (See Response Codes section for more details)
+
+Defaults to "true", which will always return the most up-to-date content based on your subscription level.
+
+Specifying "false" will also avoid any throttling restrictions on your requests. See the Throttling section for more.
