@@ -25,6 +25,7 @@ import {
   Alert,
 } from '@mui/material';
 import type { PlayerScoreResponse } from '../../types/smartScore.types';
+import { ScoreDeltaIndicator } from './ScoreDeltaIndicator';
 
 export interface SmartScoreTableProps {
   players: PlayerScoreResponse[];
@@ -35,6 +36,7 @@ export interface SmartScoreTableProps {
 export const SmartScoreTable: React.FC<SmartScoreTableProps> = ({
   players,
   isLoading = false,
+  scoreDeltas = new Map(),
 }) => {
   if (isLoading && players.length === 0) {
     return (
@@ -109,7 +111,11 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = ({
                     borderRight: '2px solid #ff8c42',
                   }}
                 >
-                  {player.smart_score?.toFixed(2) || '-'}
+                  <ScoreDeltaIndicator
+                    score={player.smart_score}
+                    delta={scoreDeltas.get(player.player_id)}
+                    showDelta={scoreDeltas.size > 0}
+                  />
                 </TableCell>
                 <TableCell>{player.projection_source || '-'}</TableCell>
                 <TableCell>{player.games_with_20_plus_snaps || '-'}</TableCell>

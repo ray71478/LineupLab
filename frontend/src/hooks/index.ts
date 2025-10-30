@@ -37,3 +37,6 @@ export type { UseSmartScoreReturn } from './useSmartScore';
 
 export { useWeightProfile } from './useWeightProfile';
 export type { UseWeightProfileReturn } from './useWeightProfile';
+
+export { useScoreSnapshot } from './useScoreSnapshot';
+export type { UseScoreSnapshotReturn } from './useScoreSnapshot';
