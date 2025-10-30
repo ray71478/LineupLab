@@ -59,6 +59,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { Box, CircularProgress, Button, Stack } from '@mui/material'
 import MainLayout from '@/components/layout/MainLayout'
 import ImportDataButton from '@/components/import/ImportDataButton'
+import { RefreshMySportsFeedsButton } from '@/components/refresh/RefreshMySportsFeedsButton'
 import WeekSelector from '@/components/layout/WeekSelector'
 import { useWeeks } from '@/hooks/useWeeks'
 import { useWeekStore } from '@/store/weekStore'
@@ -157,6 +158,7 @@ function App() {
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           <NavigationMenu />
           <WeekSelector onWeekChange={undefined} showMetadata={false} />
+          <RefreshMySportsFeedsButton onSuccess={handleImportSuccess} onError={handleImportError} />
           <ImportDataButton onSuccess={handleImportSuccess} onError={handleImportError} />
         </Box>
       }
