@@ -69,6 +69,7 @@ export const SmartScorePage: React.FC = () => {
   const [localPlayers, setLocalPlayers] = useState<PlayerScoreResponse[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
+  const [isCalculatingInitial, setIsCalculatingInitial] = useState(false);
 
   // Snapshot management
   const {
@@ -82,7 +83,8 @@ export const SmartScorePage: React.FC = () => {
 
   // Calculate scores when week or weights change
   useEffect(() => {
-    if (weekId && currentWeights && !isInitialized) {
+    if (weekId && currentWeights && !isInitialized && !isCalculatingInitial) {
+      setIsCalculatingInitial(true);
       const initialCalculation = async () => {
         try {
           const calculatedPlayers = await calculateScores(weekId, currentWeights, currentConfig);
@@ -90,11 +92,13 @@ export const SmartScorePage: React.FC = () => {
           setIsInitialized(true);
         } catch (err) {
           console.error('Failed to calculate initial scores:', err);
+        } finally {
+          setIsCalculatingInitial(false);
         }
       };
       initialCalculation();
     }
-  }, [weekId, currentWeights, currentConfig, isInitialized, calculateScores]);
+  }, [weekId, currentWeights, currentConfig, isInitialized, isCalculatingInitial]); // Removed calculateScores from deps to prevent infinite loop
 
   // Update local players when players from hook change
   useEffect(() => {
@@ -145,6 +149,7 @@ export const SmartScorePage: React.FC = () => {
     try {
       await loadDefaultProfile();
       setIsInitialized(false);
+      setIsCalculatingInitial(false);
     } catch (err) {
       console.error('Failed to load default profile:', err);
     }
