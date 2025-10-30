@@ -23,7 +23,6 @@ def upgrade() -> None:
         """
         CREATE INDEX IF NOT EXISTS idx_player_pools_week_position_team
         ON player_pools(week_id, position, team)
-        WHERE player_pools.status != 'archived'
         """
     )
 

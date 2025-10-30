@@ -109,10 +109,20 @@ async def import_linestar(
     """
     try:
         # Validate inputs
+        logger.info(f"Import request received: week_id={week_id} (type: {type(week_id)}), filename={file.filename}")
         validate_week_number(week_id)
         validate_file_extension(file.filename)
 
         # Find the week in any season (prefer most recent season)
+        logger.info(f"Looking for week_number={week_id} in database")
+        
+        # Test database connection first
+        try:
+            test_result = db.execute(text("SELECT COUNT(*) FROM weeks")).scalar()
+            logger.info(f"Database connection test: Found {test_result} total weeks")
+        except Exception as e:
+            logger.error(f"Database connection test failed: {e}")
+        
         week_result = db.execute(
             text("""
                 SELECT id, season FROM weeks
@@ -123,7 +133,18 @@ async def import_linestar(
             {"week_number": week_id}
         ).fetchone()
         
+        # Debug: check what fetchone() actually returns
+        logger.info(f"fetchone() result type: {type(week_result)}, value: {week_result}")
+        
         if not week_result:
+            # Log what weeks exist for debugging
+            try:
+                all_weeks = db.execute(
+                    text("SELECT week_number, season FROM weeks ORDER BY season DESC, week_number ASC")
+                ).fetchall()
+                logger.warning(f"Week {week_id} not found. Available weeks: {all_weeks}")
+            except Exception as e:
+                logger.error(f"Error querying available weeks: {e}")
             return {
                 "success": False,
                 "error": f"Week {week_id} not found in database. Please ensure the week exists before importing.",
@@ -131,6 +152,7 @@ async def import_linestar(
         
         actual_week_id = week_result[0]
         season = week_result[1]
+        logger.info(f"Found week {week_id}: id={actual_week_id}, season={season}")
 
         # Check for week mismatch
         detected = detect_week_from_filename(file.filename, "linestar")
@@ -303,16 +325,17 @@ async def import_linestar(
     except Exception as e:
         db.rollback()
         error_msg = str(e)
-        logger.error(f"LineStar import failed: {error_msg}", exc_info=True)
+        error_type = type(e).__name__
+        logger.error(f"LineStar import failed: {error_type}: {error_msg}", exc_info=True)
         # Return more specific error message for debugging
         if "not found" in error_msg.lower() or "does not exist" in error_msg.lower():
             return {
                 "success": False,
-                "error": f"Week {week_id} not found in database. Please ensure the week exists before importing.",
+                "error": f"Week {week_id} not found in database. Please ensure the week exists before importing. Error: {error_type}: {error_msg}",
             }
         return {
             "success": False,
-            "error": f"An unexpected error occurred during import: {error_msg}. Please try again.",
+            "error": f"An unexpected error occurred during import: {error_type}: {error_msg}. Please try again.",
         }
     finally:
         db.close()
