@@ -98,7 +98,8 @@ export const SmartScorePage: React.FC = () => {
       };
       initialCalculation();
     }
-  }, [weekId, currentWeights, currentConfig, isInitialized, isCalculatingInitial]); // Removed calculateScores from deps to prevent infinite loop
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekId, currentWeights, currentConfig, isInitialized]); // isCalculatingInitial is intentionally excluded - it's a guard, not a trigger
 
   // Update local players when players from hook change
   useEffect(() => {
