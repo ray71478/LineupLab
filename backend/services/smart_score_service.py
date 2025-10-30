@@ -161,7 +161,7 @@ class SmartScoreService:
             player, week_id, weights.W7, defaults
         )
         w8_result = self._calculate_w8_matchup_adjustment(
-            player, weights.W8
+            player, week_id, weights.W8
         )
 
         # Calculate final Smart Score
@@ -563,11 +563,18 @@ class SmartScoreService:
         defaults: Dict[str, float],
     ) -> FactorResult:
         """
-        Calculate W7: Vegas Context using real ITT from MySportsFeeds.
+        Calculate W7: Vegas Context using multi-dimensional Vegas analysis.
 
-        Formula: ((team_itt / league_avg_itt) × W7)
-        Uses real ITT from vegas_lines table populated by MySportsFeeds API.
-        Falls back to league average if real ITT unavailable.
+        Enhanced formula uses:
+        1. ITT ratio: (team_itt / league_avg_itt)
+        2. Spread leverage: Wider spreads = more volatility/ceiling upside
+        3. Moneyline strength: Odds indicate game competitiveness
+
+        Combined: ((itt_ratio × 0.5) + (spread_leverage × 0.3) + (moneyline_strength × 0.2)) × W7
+
+        Data sources:
+        - consensus spreads/moneyline from sportsbook_odds
+        - Falls back to vegas_lines if sportsbook data unavailable
 
         Args:
             player: Player data
@@ -580,9 +587,42 @@ class SmartScoreService:
         """
         league_avg_itt = defaults.get("league_avg_itt", self.DEFAULT_LEAGUE_AVG_ITT)
 
-        # Query team ITT from vegas_lines table (real API data)
+        # Query consensus Vegas data
         try:
-            result = self.session.execute(
+            # Get consensus spreads from all sportsbooks
+            spreads_result = self.session.execute(
+                text("""
+                    SELECT AVG(ABS(spread)) as avg_abs_spread, COUNT(*) as sportsbook_count
+                    FROM sportsbook_odds
+                    WHERE week_id = :week_id
+                      AND team = :team
+                      AND spread IS NOT NULL
+                """),
+                {"week_id": week_id, "team": player.team},
+            ).fetchone()
+
+            consensus_spread = (
+                abs(spreads_result.avg_abs_spread) if spreads_result and spreads_result.avg_abs_spread else 0
+            )
+
+            # Get consensus moneyline
+            moneyline_result = self.session.execute(
+                text("""
+                    SELECT AVG(moneyline_odds) as avg_moneyline
+                    FROM sportsbook_odds
+                    WHERE week_id = :week_id
+                      AND team = :team
+                      AND moneyline_odds IS NOT NULL
+                """),
+                {"week_id": week_id, "team": player.team},
+            ).fetchone()
+
+            avg_moneyline = (
+                moneyline_result.avg_moneyline if moneyline_result and moneyline_result.avg_moneyline else 0
+            )
+
+            # Get team ITT for baseline
+            itt_result = self.session.execute(
                 text("""
                     SELECT implied_team_total
                     FROM vegas_lines
@@ -595,41 +635,77 @@ class SmartScoreService:
                 {"week_id": week_id, "team": player.team},
             ).fetchone()
 
-            if result and result.implied_team_total:
-                team_itt = result.implied_team_total
-                used_default = False
-            else:
-                # Use league average if team ITT not found
-                team_itt = league_avg_itt
-                used_default = True
+            team_itt = itt_result.implied_team_total if itt_result and itt_result.implied_team_total else league_avg_itt
+            used_default = not itt_result or not itt_result.implied_team_total
+
         except Exception as e:
-            logger.warning(f"Error querying team ITT for {player.team}: {e}")
+            logger.warning(f"Error querying Vegas data for {player.team}: {e}")
             self.session.rollback()
             team_itt = league_avg_itt
+            consensus_spread = 0
+            avg_moneyline = 0
             used_default = True
 
         if league_avg_itt <= 0:
             # Avoid division by zero
             return FactorResult(value=0.0, used_default=True)
 
-        ratio = team_itt / league_avg_itt
-        value = ratio * weight
+        # Component 1: ITT Ratio (50% weight)
+        itt_ratio = team_itt / league_avg_itt
+        itt_component = itt_ratio * 0.5
 
-        return FactorResult(value=value, used_default=used_default)
+        # Component 2: Spread Leverage (30% weight)
+        # Wider spreads (>7.5) = higher volatility = higher ceiling upside
+        # Range from 0.8 (tight spread) to 1.2 (wide spread)
+        if consensus_spread > 0:
+            spread_component = (0.8 + (min(consensus_spread / 10.0, 0.4))) * 0.3
+        else:
+            spread_component = 1.0 * 0.3
+
+        # Component 3: Moneyline Strength (20% weight)
+        # Negative moneyline (favorite) = -110 or worse = sharper line
+        # Positive moneyline (underdog) = +100 or better = less sharp
+        # Range from 0.9 (underdog, +400) to 1.1 (favorite, -400)
+        if avg_moneyline < -150:
+            moneyline_component = 1.1 * 0.2  # Strong favorite
+        elif avg_moneyline < -110:
+            moneyline_component = 1.0 * 0.2  # Slight favorite
+        elif avg_moneyline < 100:
+            moneyline_component = 0.95 * 0.2  # Slight underdog
+        else:
+            moneyline_component = 0.9 * 0.2  # Underdog
+
+        # Combine components
+        combined_ratio = itt_component + spread_component + moneyline_component
+        value = combined_ratio * weight
+
+        breakdown_info = (
+            f"ITT:{itt_ratio:.2f} Spread:{consensus_spread:.1f} ML:{avg_moneyline:.0f}"
+        )
+
+        return FactorResult(value=value, used_default=used_default, breakdown_info=breakdown_info)
 
     def _calculate_w8_matchup_adjustment(
-        self, player: PlayerData, weight: float
+        self, player: PlayerData, week_id: int, weight: float
     ) -> FactorResult:
         """
-        Calculate W8: Matchup Adjustment using real defensive rankings from MySportsFeeds.
+        Calculate W8: Matchup Adjustment using Vegas spreads + defensive rankings.
 
-        Formula: category_value × W8
-        Uses real opponent defensive rank from team_defense_stats table.
-        Category values: top_5 = +1.0, middle = 0.0, bottom_5 = -1.0
-        Missing: Use "middle" (0.0)
+        Enhanced formula combines:
+        1. Opponent defensive ranking (traditional)
+        2. Spread-based strength: Favorite spreads indicate stronger opponent
+
+        Formula: ((rank_category × 0.7) + (spread_strength × 0.3)) × W8
+
+        Spread strength interpretation:
+        - Opponent is 7+ point favorite: Strong defense (value: -1.0)
+        - Opponent is 0-7 point favorite: Good defense (value: -0.5)
+        - Close spread: Middle tier (value: 0.0)
+        - Your team favorite: Weak opponent defense (value: +0.5 to +1.0)
 
         Args:
             player: Player data
+            week_id: Week ID for Vegas data lookup
             weight: W8 weight
 
         Returns:
@@ -637,19 +713,59 @@ class SmartScoreService:
         """
         category = player.opponent_rank_category or "middle"
 
-        # Map category to value
+        # Traditional rank-based values
         category_values = {
             "top_5": 1.0,
             "middle": 0.0,
             "bottom_5": -1.0,
         }
+        rank_component = category_values.get(category, 0.0) * 0.7
 
-        category_value = category_values.get(category, 0.0)
-        value = category_value * weight
+        # Spread-based strength component
+        spread_component = 0.0
+        try:
+            # Query opponent's spread (from their perspective)
+            spread_result = self.session.execute(
+                text("""
+                    SELECT AVG(spread) as avg_spread
+                    FROM sportsbook_odds
+                    WHERE week_id = :week_id
+                      AND team = :opponent
+                      AND spread IS NOT NULL
+                """),
+                {"week_id": week_id, "opponent": player.team},  # Opponent's spread
+            ).fetchone()
+
+            if spread_result and spread_result.avg_spread is not None:
+                opp_spread = spread_result.avg_spread
+
+                # Positive spread = opponent is underdog = weaker
+                # Negative spread = opponent is favorite = stronger
+                if opp_spread < -7:
+                    spread_component = 1.0 * 0.3  # Opponent strong favorite
+                elif opp_spread < -3:
+                    spread_component = 0.5 * 0.3  # Opponent slight favorite
+                elif opp_spread < 3:
+                    spread_component = 0.0 * 0.3  # Roughly even
+                elif opp_spread < 7:
+                    spread_component = -0.5 * 0.3  # Opponent slight underdog
+                else:
+                    spread_component = -1.0 * 0.3  # Opponent big underdog
+
+        except Exception as e:
+            logger.debug(f"Error querying spread for {player.team}: {e}")
+            self.session.rollback()
+            spread_component = 0.0
+
+        # Combine components
+        combined_value = rank_component + spread_component
+        value = combined_value * weight
 
         used_default = player.opponent_rank_category is None
 
-        return FactorResult(value=value, used_default=used_default)
+        breakdown_info = f"Rank:{category} Spread:{opp_spread if spread_result and spread_result.avg_spread else 'N/A'}"
+
+        return FactorResult(value=value, used_default=used_default, breakdown_info=breakdown_info)
 
     def categorize_opponent_rank(self, opp_rank: Optional[int]) -> str:
         """

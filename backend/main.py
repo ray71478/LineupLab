@@ -7,6 +7,7 @@ Configures FastAPI app, registers routers, and sets up middleware.
 
 import logging
 import os
+from dotenv import load_dotenv
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -15,6 +16,9 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
 
 from backend.exceptions import CortexException
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
