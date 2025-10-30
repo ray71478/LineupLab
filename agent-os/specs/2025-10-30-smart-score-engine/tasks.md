@@ -171,7 +171,7 @@ class ScoreConfig(BaseModel):
 ### Group 2: Smart Score Calculation Engine (Core Logic)
 
 #### Task 2.1: Create SmartScoreService - Core Calculation Logic
-**Status:** pending
+**Status:** completed
 **Type:** Backend Service
 **Effort:** L
 **Priority:** High
@@ -181,19 +181,19 @@ class ScoreConfig(BaseModel):
 Implement the core SmartScoreService with the 8-factor formula calculation logic.
 
 **Subtasks:**
-- [ ] 2.1.1 Create `/backend/services/smart_score_service.py`
-- [ ] 2.1.2 Implement `calculate_smart_score(player, week_id, weights, config)` method
-- [ ] 2.1.3 Implement W1: Projection Factor calculation
-- [ ] 2.1.4 Implement W2: Ceiling Factor calculation (with missing data handling)
-- [ ] 2.1.5 Implement W3: Ownership Penalty calculation
-- [ ] 2.1.6 Implement W4: Value Score calculation
-- [ ] 2.1.7 Implement W5: Trend Adjustment calculation (position-specific)
-- [ ] 2.1.8 Implement W6: Regression Penalty calculation (WR only, visual flag in MVP)
-- [ ] 2.1.9 Implement W7: Vegas Context calculation (ITT-based)
-- [ ] 2.1.10 Implement W8: Matchup Adjustment calculation
-- [ ] 2.1.11 Implement `calculate_for_all_players(week_id, weights, config)` method
-- [ ] 2.1.12 Return score breakdown for each factor
-- [ ] 2.1.13 Add unit tests for each factor calculation
+- [x] 2.1.1 Create `/backend/services/smart_score_service.py`
+- [x] 2.1.2 Implement `calculate_smart_score(player, week_id, weights, config)` method
+- [x] 2.1.3 Implement W1: Projection Factor calculation
+- [x] 2.1.4 Implement W2: Ceiling Factor calculation (with missing data handling)
+- [x] 2.1.5 Implement W3: Ownership Penalty calculation
+- [x] 2.1.6 Implement W4: Value Score calculation
+- [x] 2.1.7 Implement W5: Trend Adjustment calculation (position-specific)
+- [x] 2.1.8 Implement W6: Regression Penalty calculation (WR only, visual flag in MVP)
+- [x] 2.1.9 Implement W7: Vegas Context calculation (ITT-based)
+- [x] 2.1.10 Implement W8: Matchup Adjustment calculation
+- [x] 2.1.11 Implement `calculate_for_all_players(week_id, weights, config)` method
+- [x] 2.1.12 Return score breakdown for each factor
+- [x] 2.1.13 Add unit tests for each factor calculation
 
 **Acceptance Criteria:**
 - All 8 factors calculated correctly
@@ -214,7 +214,7 @@ Implement the core SmartScoreService with the 8-factor formula calculation logic
 ---
 
 #### Task 2.2: Implement Missing Data Handling
-**Status:** pending
+**Status:** completed
 **Type:** Backend Service
 **Effort:** M
 **Priority:** High
@@ -224,16 +224,16 @@ Implement the core SmartScoreService with the 8-factor formula calculation logic
 Implement intelligent defaults and fallbacks for missing data in Smart Score calculation.
 
 **Subtasks:**
-- [ ] 2.2.1 Implement `get_missing_data_defaults(week_id)` method
-- [ ] 2.2.2 Calculate league average ownership per week
-- [ ] 2.2.3 Calculate league average ITT per week from `vegas_lines`
-- [ ] 2.2.4 Implement ceiling/floor estimation based on projection volatility
-- [ ] 2.2.5 Implement position-based default ranges (WR: ±5, RB: ±4)
-- [ ] 2.2.6 Handle missing projection (use 0 or exclude factor)
-- [ ] 2.2.7 Handle missing historical stats (neutral trend = 0)
-- [ ] 2.2.8 Handle missing ITT (use league average 22.5)
-- [ ] 2.2.9 Handle missing opponent rank (use "middle" category)
-- [ ] 2.2.10 Return indicators for which defaults were used
+- [x] 2.2.1 Implement `get_missing_data_defaults(week_id)` method
+- [x] 2.2.2 Calculate league average ownership per week
+- [x] 2.2.3 Calculate league average ITT per week from `vegas_lines`
+- [x] 2.2.4 Implement ceiling/floor estimation based on projection volatility
+- [x] 2.2.5 Implement position-based default ranges (WR: ±5, RB: ±4)
+- [x] 2.2.6 Handle missing projection (use 0 or exclude factor)
+- [x] 2.2.7 Handle missing historical stats (neutral trend = 0)
+- [x] 2.2.8 Handle missing ITT (use league average 22.5)
+- [x] 2.2.9 Handle missing opponent rank (use "middle" category)
+- [x] 2.2.10 Return indicators for which defaults were used
 
 **Acceptance Criteria:**
 - All missing data scenarios handled
@@ -252,7 +252,7 @@ Implement intelligent defaults and fallbacks for missing data in Smart Score cal
 ---
 
 #### Task 2.3: Implement Trend Calculation (Position-Specific)
-**Status:** pending
+**Status:** completed
 **Type:** Backend Service
 **Effort:** M
 **Priority:** High
@@ -262,16 +262,16 @@ Implement intelligent defaults and fallbacks for missing data in Smart Score cal
 Calculate trend adjustments for each position using position-specific metrics from historical_stats.
 
 **Subtasks:**
-- [ ] 2.3.1 Implement `calculate_trend_adjustment(player, week_id)` method
-- [ ] 2.3.2 Query `historical_stats` for last 2-4 games with `snaps >= 20`
-- [ ] 2.3.3 Implement WR/TE trend: Calculate `target_share` trend
-- [ ] 2.3.4 Implement RB trend: Calculate `snap_pct` trend
-- [ ] 2.3.5 Implement QB trend: Calculate `pass_attempts` trend (or derive from pass_yards)
-- [ ] 2.3.6 Implement DST trend: Skip (return 0 or neutral)
-- [ ] 2.3.7 Calculate percentage change: `(most_recent - oldest) / oldest`
-- [ ] 2.3.8 Handle minimum 2 games requirement (use neutral if < 2 games)
-- [ ] 2.3.9 Count games with 20+ snaps for display
-- [ ] 2.3.10 Add unit tests for each position type
+- [x] 2.3.1 Implement `calculate_trend_adjustment(player, week_id)` method
+- [x] 2.3.2 Query `historical_stats` for last 2-4 games with `snaps >= 20`
+- [x] 2.3.3 Implement WR/TE trend: Calculate `target_share` trend
+- [x] 2.3.4 Implement RB trend: Calculate `snap_pct` trend
+- [x] 2.3.5 Implement QB trend: Calculate `pass_attempts` trend (or derive from pass_yards)
+- [x] 2.3.6 Implement DST trend: Skip (return 0 or neutral)
+- [x] 2.3.7 Calculate percentage change: `(most_recent - oldest) / oldest`
+- [x] 2.3.8 Handle minimum 2 games requirement (use neutral if < 2 games)
+- [x] 2.3.9 Count games with 20+ snaps for display
+- [x] 2.3.10 Add unit tests for each position type
 
 **Acceptance Criteria:**
 - Position-specific metrics used correctly
@@ -291,7 +291,7 @@ Calculate trend adjustments for each position using position-specific metrics fr
 ---
 
 #### Task 2.4: Implement Vegas Context Calculation (ITT)
-**Status:** pending
+**Status:** completed
 **Type:** Backend Service
 **Effort:** M
 **Priority:** High
@@ -301,14 +301,14 @@ Calculate trend adjustments for each position using position-specific metrics fr
 Calculate Vegas Context factor using player's team ITT vs. league average ITT from vegas_lines table.
 
 **Subtasks:**
-- [ ] 2.4.1 Implement `calculate_vegas_context(player, week_id)` method
-- [ ] 2.4.2 Query `vegas_lines` for player's team ITT for the week
-- [ ] 2.4.3 Calculate league average ITT from all teams in `vegas_lines` for the week
-- [ ] 2.4.4 Calculate ratio: `team_itt / league_avg_itt`
-- [ ] 2.4.5 Apply weight: `ratio × W7`
-- [ ] 2.4.6 Handle missing ITT: Use league average (22.5 default)
-- [ ] 2.4.7 Handle missing team ITT: Use league average
-- [ ] 2.4.8 Add unit tests for ITT calculation
+- [x] 2.4.1 Implement `calculate_vegas_context(player, week_id)` method
+- [x] 2.4.2 Query `vegas_lines` for player's team ITT for the week
+- [x] 2.4.3 Calculate league average ITT from all teams in `vegas_lines` for the week
+- [x] 2.4.4 Calculate ratio: `team_itt / league_avg_itt`
+- [x] 2.4.5 Apply weight: `ratio × W7`
+- [x] 2.4.6 Handle missing ITT: Use league average (22.5 default)
+- [x] 2.4.7 Handle missing team ITT: Use league average
+- [x] 2.4.8 Add unit tests for ITT calculation
 
 **Acceptance Criteria:**
 - ITT retrieved from vegas_lines table
@@ -328,7 +328,7 @@ Calculate Vegas Context factor using player's team ITT vs. league average ITT fr
 ---
 
 #### Task 2.5: Implement Regression Risk Detection (80-20 Rule)
-**Status:** pending
+**Status:** completed
 **Type:** Backend Service
 **Effort:** S
 **Priority:** Medium
@@ -338,14 +338,14 @@ Calculate Vegas Context factor using player's team ITT vs. league average ITT fr
 Detect WR players who scored 20+ points last week (regression risk indicator).
 
 **Subtasks:**
-- [ ] 2.5.1 Implement `calculate_regression_risk(player, week_id)` method
-- [ ] 2.5.2 Check if player position is WR (only WR, not TE/RB/QB/DST)
-- [ ] 2.5.3 Query `historical_stats` for previous week's `actual_points`
-- [ ] 2.5.4 Check if `actual_points >= threshold` (default 20)
-- [ ] 2.5.5 Return boolean flag: `regression_risk = True/False`
-- [ ] 2.5.6 Handle missing historical data: Return False with indicator
-- [ ] 2.5.7 MVP: Visual flag only, no penalty calculation (W6 = 0 in formula)
-- [ ] 2.5.8 Add unit tests for regression detection
+- [x] 2.5.1 Implement `calculate_regression_risk(player, week_id)` method
+- [x] 2.5.2 Check if player position is WR (only WR, not TE/RB/QB/DST)
+- [x] 2.5.3 Query `historical_stats` for previous week's `actual_points`
+- [x] 2.5.4 Check if `actual_points >= threshold` (default 20)
+- [x] 2.5.5 Return boolean flag: `regression_risk = True/False`
+- [x] 2.5.6 Handle missing historical data: Return False with indicator
+- [x] 2.5.7 MVP: Visual flag only, no penalty calculation (W6 = 0 in formula)
+- [x] 2.5.8 Add unit tests for regression detection
 
 **Acceptance Criteria:**
 - Only WR players checked
@@ -365,7 +365,7 @@ Detect WR players who scored 20+ points last week (regression risk indicator).
 ---
 
 #### Task 2.6: Implement Opponent Rank Categorization
-**Status:** pending
+**Status:** completed
 **Type:** Backend Service
 **Effort:** S
 **Priority:** Medium
@@ -375,14 +375,14 @@ Detect WR players who scored 20+ points last week (regression risk indicator).
 Categorize opponent defensive rank into top_5, middle, bottom_5 categories for matchup adjustment.
 
 **Subtasks:**
-- [ ] 2.6.1 Implement `categorize_opponent_rank(opp_rank)` method
-- [ ] 2.6.2 Categorize: Rank 1-5 = "top_5", Rank 28-32 = "bottom_5", else "middle"
-- [ ] 2.6.3 Implement `calculate_matchup_adjustment(player, week_id)` method
-- [ ] 2.6.4 Map category to value: top_5 = +1.0, middle = 0.0, bottom_5 = -1.0
-- [ ] 2.6.5 Apply weight: `category_value × W8`
-- [ ] 2.6.6 Handle missing opponent rank: Use "middle" (0.0)
-- [ ] 2.6.7 Store category in `player_pools.opponent_rank_category`
-- [ ] 2.6.8 Add unit tests for categorization
+- [x] 2.6.1 Implement `categorize_opponent_rank(opp_rank)` method
+- [x] 2.6.2 Categorize: Rank 1-5 = "top_5", Rank 28-32 = "bottom_5", else "middle"
+- [x] 2.6.3 Implement `calculate_matchup_adjustment(player, week_id)` method
+- [x] 2.6.4 Map category to value: top_5 = +1.0, middle = 0.0, bottom_5 = -1.0
+- [x] 2.6.5 Apply weight: `category_value × W8`
+- [x] 2.6.6 Handle missing opponent rank: Use "middle" (0.0)
+- [x] 2.6.7 Store category in `player_pools.opponent_rank_category`
+- [x] 2.6.8 Add unit tests for categorization
 
 **Acceptance Criteria:**
 - Categories assigned correctly
