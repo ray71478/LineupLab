@@ -6,6 +6,8 @@ Provides core business logic services for:
 - Player matching and normalization
 - Import history tracking
 - Week management
+- Smart Score calculation
+- Weight profile management
 """
 
 __all__ = [
@@ -14,6 +16,8 @@ __all__ = [
     "ImportHistoryTracker",
     "ValidationService",
     "WeekManagementService",
+    "SmartScoreService",
+    "WeightProfileService",
 ]
 
 
@@ -34,4 +38,10 @@ def __getattr__(name):
     elif name == "WeekManagementService":
         from backend.services.week_management_service import WeekManagementService
         return WeekManagementService
+    elif name == "SmartScoreService":
+        from backend.services.smart_score_service import SmartScoreService
+        return SmartScoreService
+    elif name == "WeightProfileService":
+        from backend.services.weight_profile_service import WeightProfileService
+        return WeightProfileService
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

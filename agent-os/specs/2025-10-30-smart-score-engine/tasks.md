@@ -404,7 +404,7 @@ Categorize opponent defensive rank into top_5, middle, bottom_5 categories for m
 ### Group 3: Weight Profile Management (Backend API)
 
 #### Task 3.1: Create WeightProfileService
-**Status:** pending
+**Status:** completed
 **Type:** Backend Service
 **Effort:** M
 **Priority:** High
@@ -414,15 +414,15 @@ Categorize opponent defensive rank into top_5, middle, bottom_5 categories for m
 Implement WeightProfileService for CRUD operations on weight profiles.
 
 **Subtasks:**
-- [ ] 3.1.1 Create `/backend/services/weight_profile_service.py`
-- [ ] 3.1.2 Implement `create_profile(name, weights, config)` method
-- [ ] 3.1.3 Implement `get_profile(profile_id)` method
-- [ ] 3.1.4 Implement `list_profiles()` method
-- [ ] 3.1.5 Implement `update_profile(profile_id, weights, config)` method
-- [ ] 3.1.6 Implement `delete_profile(profile_id)` method
-- [ ] 3.1.7 Implement `get_default_profile()` method
-- [ ] 3.1.8 Validate unique name constraint
-- [ ] 3.1.9 Prevent deletion of default "Base" profile
+- [x] 3.1.1 Create `/backend/services/weight_profile_service.py`
+- [x] 3.1.2 Implement `create_profile(name, weights, config)` method
+- [x] 3.1.3 Implement `get_profile(profile_id)` method
+- [x] 3.1.4 Implement `list_profiles()` method
+- [x] 3.1.5 Implement `update_profile(profile_id, weights, config)` method
+- [x] 3.1.6 Implement `delete_profile(profile_id)` method
+- [x] 3.1.7 Implement `get_default_profile()` method
+- [x] 3.1.8 Validate unique name constraint
+- [x] 3.1.9 Prevent deletion of default "Base" profile
 - [ ] 3.1.10 Add unit tests for all CRUD operations
 
 **Acceptance Criteria:**
@@ -444,7 +444,7 @@ Implement WeightProfileService for CRUD operations on weight profiles.
 ---
 
 #### Task 3.2: Create Smart Score Router API Endpoints
-**Status:** pending
+**Status:** completed
 **Type:** Backend API
 **Effort:** M
 **Priority:** High
@@ -454,17 +454,17 @@ Implement WeightProfileService for CRUD operations on weight profiles.
 Create FastAPI router with endpoints for Smart Score calculation and weight profile management.
 
 **Subtasks:**
-- [ ] 3.2.1 Create `/backend/routers/smart_score_router.py`
-- [ ] 3.2.2 Implement `POST /api/smart-score/calculate` endpoint
-- [ ] 3.2.3 Implement `GET /api/smart-score/profiles` endpoint
-- [ ] 3.2.4 Implement `POST /api/smart-score/profiles` endpoint (create)
-- [ ] 3.2.5 Implement `GET /api/smart-score/profiles/{profile_id}` endpoint
-- [ ] 3.2.6 Implement `PUT /api/smart-score/profiles/{profile_id}` endpoint
-- [ ] 3.2.7 Implement `DELETE /api/smart-score/profiles/{profile_id}` endpoint
-- [ ] 3.2.8 Add request validation using Pydantic schemas
-- [ ] 3.2.9 Add error handling and appropriate HTTP status codes
-- [ ] 3.2.10 Register router in main.py
-- [ ] 3.2.11 Add API documentation (OpenAPI/Swagger)
+- [x] 3.2.1 Create `/backend/routers/smart_score_router.py`
+- [x] 3.2.2 Implement `POST /api/smart-score/calculate` endpoint
+- [x] 3.2.3 Implement `GET /api/smart-score/profiles` endpoint
+- [x] 3.2.4 Implement `POST /api/smart-score/profiles` endpoint (create)
+- [x] 3.2.5 Implement `GET /api/smart-score/profiles/{profile_id}` endpoint
+- [x] 3.2.6 Implement `PUT /api/smart-score/profiles/{profile_id}` endpoint
+- [x] 3.2.7 Implement `DELETE /api/smart-score/profiles/{profile_id}` endpoint
+- [x] 3.2.8 Add request validation using Pydantic schemas
+- [x] 3.2.9 Add error handling and appropriate HTTP status codes
+- [x] 3.2.10 Register router in main.py
+- [x] 3.2.11 Add API documentation (OpenAPI/Swagger)
 
 **Acceptance Criteria:**
 - All endpoints implemented correctly
