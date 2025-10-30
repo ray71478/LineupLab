@@ -4,13 +4,16 @@ DailyDataRefreshJob for orchestrating Vegas lines data refresh.
 Coordinates API calls and stores results in database:
 - Vegas lines → vegas_lines (game totals from TheOddsAPI)
 
+Handles ALL upcoming weeks, not just the current one, by mapping games
+from TheOddsAPI to their correct week_id based on game commence_time.
+
 Includes error handling, logging, and status tracking.
 """
 
 import logging
 import asyncio
-from datetime import datetime
-from typing import Dict, Any, Optional
+from datetime import datetime, date, timedelta
+from typing import Dict, Any, Optional, List, Tuple
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -115,7 +118,7 @@ class DailyDataRefreshJob:
                 await self.service.close()
 
     async def _fetch_and_store_games(self) -> None:
-        """Fetch games with all odds and store in vegas_lines."""
+        """Fetch games with all odds and store in vegas_lines for ALL upcoming weeks."""
         try:
             self.logger.info("Fetching games with all odds from TheOddsAPI...")
 
@@ -129,8 +132,19 @@ class DailyDataRefreshJob:
                 }
                 return
 
+            # Get upcoming weeks to map games to correct week_id
+            upcoming_weeks = self._get_upcoming_weeks()
+            if not upcoming_weeks:
+                self.logger.warning("No upcoming weeks found in database")
+                self.results["games"] = {
+                    "fetched": len(games),
+                    "stored": 0,
+                    "errors": len(games),
+                }
+                return
+
             # Store in database
-            stored = await self._store_vegas_lines(games)
+            stored = await self._store_vegas_lines(games, upcoming_weeks)
 
             self.results["games"] = {
                 "fetched": len(games),
@@ -146,30 +160,74 @@ class DailyDataRefreshJob:
                 "errors": 1,
             }
 
-    async def _store_vegas_lines(self, games: list) -> int:
+    def _get_upcoming_weeks(self) -> List[Tuple[int, date]]:
         """
-        Store Vegas game totals and multi-sportsbook odds.
+        Get all upcoming weeks with their NFL slate dates.
+
+        Returns:
+            List of tuples (week_id, nfl_slate_date) for all upcoming weeks.
+            Sorted by slate_date ascending.
+        """
+        try:
+            today = date.today()
+            result = self.db.execute(text("""
+                SELECT id, nfl_slate_date
+                FROM weeks
+                WHERE nfl_slate_date >= :today
+                ORDER BY nfl_slate_date ASC
+            """), {"today": today})
+
+            weeks = result.fetchall()
+            self.logger.info(f"Found {len(weeks)} upcoming weeks")
+            return weeks if weeks else []
+        except Exception as e:
+            self.logger.error(f"Error fetching upcoming weeks: {str(e)}")
+            return []
+
+    def _map_game_to_week(self, game_commence_time: Optional[datetime], upcoming_weeks: List[Tuple[int, date]]) -> Optional[int]:
+        """
+        Map a game to its correct week based on commence_time and week slate dates.
+
+        NFL weeks typically span Thursday-Monday, with games starting Thursday or Sunday.
+        We match the game's commence_time to the week that contains it.
+
+        Args:
+            game_commence_time: When the game is scheduled to start (UTC)
+            upcoming_weeks: List of (week_id, nfl_slate_date) tuples
+
+        Returns:
+            week_id if match found, None otherwise
+        """
+        if not game_commence_time or not upcoming_weeks:
+            return None
+
+        # Convert commence_time to date
+        game_date = game_commence_time.date() if hasattr(game_commence_time, 'date') else game_commence_time
+
+        # Find the week containing this game
+        # Game belongs to the week where its date matches the nfl_slate_date
+        # or is within a few days after the slate date
+        for week_id, slate_date in upcoming_weeks:
+            # Weeks typically span slate_date to slate_date + 6 days
+            # (covers Thu, Fri, Sat, Sun, Mon, Tue, Wed)
+            week_end = slate_date + timedelta(days=6)
+            if slate_date <= game_date <= week_end:
+                return week_id
+
+        return None
+
+    async def _store_vegas_lines(self, games: list, upcoming_weeks: List[Tuple[int, date]]) -> int:
+        """
+        Store Vegas game totals and multi-sportsbook odds for all upcoming weeks.
 
         Args:
             games: List of game dictionaries from TheOddsAPI with sportsbooks array
+            upcoming_weeks: List of (week_id, nfl_slate_date) tuples for matching games to weeks
 
         Returns:
             Number of games successfully stored
         """
         stored = 0
-
-        # Get current week ID
-        result = self.db.execute(text("""
-            SELECT id FROM weeks
-            ORDER BY id DESC
-            LIMIT 1
-        """))
-        week_row = result.first()
-        week_id = week_row[0] if week_row else None
-
-        if not week_id:
-            self.logger.warning("Could not find current week for game totals storage")
-            return 0
 
         for game in games:
             try:
@@ -177,12 +235,22 @@ class DailyDataRefreshJob:
                 home_team = game.get("home_team", "")
                 game_total = game.get("game_total")
                 sportsbooks = game.get("sportsbooks", [])
+                commence_time = game.get("commence_time")
 
                 if not away_team or not home_team:
                     continue
 
                 if game_total is None:
                     self.logger.debug(f"No game total for {away_team} vs {home_team}")
+                    continue
+
+                # Map game to its correct week based on commence_time
+                week_id = self._map_game_to_week(commence_time, upcoming_weeks)
+                if not week_id:
+                    self.logger.debug(
+                        f"Could not map {away_team} vs {home_team} to any upcoming week "
+                        f"(commence_time: {commence_time})"
+                    )
                     continue
 
                 # Store consensus odds from first sportsbook in vegas_lines (for backwards compatibility)
