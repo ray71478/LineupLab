@@ -28,12 +28,13 @@ import {
   Grid,
 } from '@mui/material';
 import { useWeekStore } from '../store/weekStore';
-import { useSmartScore, useWeightProfile } from '../hooks';
+import { useSmartScore, useWeightProfile, useScoreSnapshot } from '../hooks';
 import type { PlayerScoreResponse, WeightProfile, ScoreConfig } from '../types/smartScore.types';
 
 // Placeholder components - will be created next
 const WeightAdjustmentPanel = React.lazy(() => import('../components/smart-score/WeightAdjustmentPanel').then(m => ({ default: m.WeightAdjustmentPanel })));
 const SmartScoreTable = React.lazy(() => import('../components/smart-score/SmartScoreTable').then(m => ({ default: m.SmartScoreTable })));
+const SnapshotModal = React.lazy(() => import('../components/smart-score/SnapshotModal').then(m => ({ default: m.SnapshotModal })));
 
 export const SmartScorePage: React.FC = () => {
   const theme = useTheme();
@@ -67,6 +68,17 @@ export const SmartScorePage: React.FC = () => {
 
   const [localPlayers, setLocalPlayers] = useState<PlayerScoreResponse[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [showSnapshotModal, setShowSnapshotModal] = useState(false);
+
+  // Snapshot management
+  const {
+    createSnapshot,
+    keepChanges,
+    revert,
+    calculateDeltas,
+    getTopChanges,
+    hasSnapshot,
+  } = useScoreSnapshot();
 
   // Calculate scores when week or weights change
   useEffect(() => {
@@ -95,11 +107,38 @@ export const SmartScorePage: React.FC = () => {
     if (!weekId) return;
 
     try {
+      // Store previous scores before recalculation
+      if (localPlayers.length > 0) {
+        createSnapshot(localPlayers);
+      }
+
+      // Calculate new scores
       const calculatedPlayers = await calculateScores(weekId, currentWeights, currentConfig);
       setLocalPlayers(calculatedPlayers);
+
+      // Show snapshot modal if there are changes
+      const changes = getTopChanges(calculatedPlayers);
+      if (changes.length > 0) {
+        setShowSnapshotModal(true);
+      }
     } catch (err) {
       console.error('Failed to calculate scores:', err);
     }
+  };
+
+  const handleKeepChanges = () => {
+    keepChanges();
+    setShowSnapshotModal(false);
+  };
+
+  const handleRevert = () => {
+    const revertedPlayers = revert(localPlayers);
+    setLocalPlayers(revertedPlayers);
+    setShowSnapshotModal(false);
+  };
+
+  const handleCloseSnapshotModal = () => {
+    setShowSnapshotModal(false);
   };
 
   const handleReset = async () => {
@@ -187,10 +226,24 @@ export const SmartScorePage: React.FC = () => {
               <SmartScoreTable
                 players={localPlayers}
                 isLoading={isLoading}
+                scoreDeltas={hasSnapshot ? calculateDeltas(localPlayers) : new Map()}
               />
             </React.Suspense>
           </Grid>
         </Grid>
+      )}
+
+      {/* Snapshot Modal */}
+      {showSnapshotModal && (
+        <React.Suspense fallback={null}>
+          <SnapshotModal
+            open={showSnapshotModal}
+            changes={getTopChanges(localPlayers)}
+            onKeepChanges={handleKeepChanges}
+            onRevert={handleRevert}
+            onClose={handleCloseSnapshotModal}
+          />
+        </React.Suspense>
       )}
     </Container>
   );

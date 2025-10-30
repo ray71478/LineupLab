@@ -700,7 +700,7 @@ Create React hook for managing weight profile state, loading, saving, and select
 ### Group 5: Recalculation & Snapshot Workflow (User Interaction)
 
 #### Task 5.1: Implement Recalculation Logic
-**Status:** pending
+**Status:** completed
 **Type:** Frontend Logic
 **Effort:** M
 **Priority:** High
@@ -710,15 +710,15 @@ Create React hook for managing weight profile state, loading, saving, and select
 Implement the Apply button workflow to trigger recalculation and store previous scores.
 
 **Subtasks:**
-- [ ] 5.1.1 Store previous Smart Scores before recalculation
-- [ ] 5.1.2 Implement "Apply" button click handler
-- [ ] 5.1.3 Show loading indicator during calculation
-- [ ] 5.1.4 Call API to recalculate scores with new weights
-- [ ] 5.1.5 Wait for calculation to complete (< 500ms target)
-- [ ] 5.1.6 Store new scores
-- [ ] 5.1.7 Calculate deltas (new - previous) for each player
-- [ ] 5.1.8 Open SnapshotModal with changes
-- [ ] 5.1.9 Handle errors during recalculation
+- [x] 5.1.1 Store previous Smart Scores before recalculation
+- [x] 5.1.2 Implement "Apply" button click handler
+- [x] 5.1.3 Show loading indicator during calculation
+- [x] 5.1.4 Call API to recalculate scores with new weights
+- [x] 5.1.5 Wait for calculation to complete (< 500ms target)
+- [x] 5.1.6 Store new scores
+- [x] 5.1.7 Calculate deltas (new - previous) for each player
+- [x] 5.1.8 Open SnapshotModal with changes
+- [x] 5.1.9 Handle errors during recalculation
 
 **Acceptance Criteria:**
 - Previous scores stored correctly
@@ -735,7 +735,7 @@ Implement the Apply button workflow to trigger recalculation and store previous 
 ---
 
 #### Task 5.2: Create SnapshotModal Component
-**Status:** pending
+**Status:** completed
 **Type:** Frontend Component
 **Effort:** M
 **Priority:** High
@@ -745,16 +745,16 @@ Implement the Apply button workflow to trigger recalculation and store previous 
 Create modal showing before/after scores with delta indicators and top 10 highlighting.
 
 **Subtasks:**
-- [ ] 5.2.1 Create `/frontend/src/components/smart-score/SnapshotModal.tsx`
-- [ ] 5.2.2 Display player name, previous score, new score, delta
-- [ ] 5.2.3 Highlight top 10 biggest changes (orange border/background)
-- [ ] 5.2.4 Show all players whose score changed
-- [ ] 5.2.5 Add "Keep Changes" button (applies changes, closes modal)
-- [ ] 5.2.6 Add "Revert" button (restores previous scores, closes modal)
-- [ ] 5.2.7 Style modal with dark theme
-- [ ] 5.2.8 Make modal scrollable for many players
-- [ ] 5.2.9 Add close button (X) in header
-- [ ] 5.2.10 Make responsive for mobile (full-width)
+- [x] 5.2.1 Create `/frontend/src/components/smart-score/SnapshotModal.tsx`
+- [x] 5.2.2 Display player name, previous score, new score, delta
+- [x] 5.2.3 Highlight top 10 biggest changes (orange border/background)
+- [x] 5.2.4 Show all players whose score changed
+- [x] 5.2.5 Add "Keep Changes" button (applies changes, closes modal)
+- [x] 5.2.6 Add "Revert" button (restores previous scores, closes modal)
+- [x] 5.2.7 Style modal with dark theme
+- [x] 5.2.8 Make modal scrollable for many players
+- [x] 5.2.9 Add close button (X) in header
+- [x] 5.2.10 Make responsive for mobile (full-width)
 
 **Acceptance Criteria:**
 - Modal displays all changed players
@@ -771,7 +771,7 @@ Create modal showing before/after scores with delta indicators and top 10 highli
 ---
 
 #### Task 5.3: Create useScoreSnapshot Hook
-**Status:** pending
+**Status:** completed
 **Type:** Frontend Hook
 **Effort:** S
 **Priority:** High
@@ -781,14 +781,14 @@ Create modal showing before/after scores with delta indicators and top 10 highli
 Create hook for managing snapshot comparison logic (before/after scores, deltas).
 
 **Subtasks:**
-- [ ] 5.3.1 Create `/frontend/src/hooks/useScoreSnapshot.ts`
-- [ ] 5.3.2 Implement snapshot storage (previous scores)
-- [ ] 5.3.3 Implement delta calculation (new - previous)
-- [ ] 5.3.4 Implement top 10 changes identification
-- [ ] 5.3.5 Implement Keep Changes function (apply new scores)
-- [ ] 5.3.6 Implement Revert function (restore previous scores)
-- [ ] 5.3.7 Clear snapshot after Keep Changes (not persist)
-- [ ] 5.3.8 Return snapshot data, keepChanges, revert functions
+- [x] 5.3.1 Create `/frontend/src/hooks/useScoreSnapshot.ts`
+- [x] 5.3.2 Implement snapshot storage (previous scores)
+- [x] 5.3.3 Implement delta calculation (new - previous)
+- [x] 5.3.4 Implement top 10 changes identification
+- [x] 5.3.5 Implement Keep Changes function (apply new scores)
+- [x] 5.3.6 Implement Revert function (restore previous scores)
+- [x] 5.3.7 Clear snapshot after Keep Changes (not persist)
+- [x] 5.3.8 Return snapshot data, keepChanges, revert functions
 
 **Acceptance Criteria:**
 - Snapshot stored before recalculation
@@ -804,7 +804,7 @@ Create hook for managing snapshot comparison logic (before/after scores, deltas)
 ---
 
 #### Task 5.4: Implement Delta Indicators in Table
-**Status:** pending
+**Status:** completed
 **Type:** Frontend Component
 **Effort:** S
 **Priority:** Medium
@@ -814,14 +814,14 @@ Create hook for managing snapshot comparison logic (before/after scores, deltas)
 Display delta indicators (+2.5, -1.3) next to Smart Scores in table after recalculation.
 
 **Subtasks:**
-- [ ] 5.4.1 Create ScoreDeltaIndicator component
-- [ ] 5.4.2 Display format: `45.2 (+2.5)` or `38.7 (-1.3)`
-- [ ] 5.4.3 Color positive deltas green (subtle: rgba(76, 175, 80, 0.3))
-- [ ] 5.4.4 Color negative deltas red (subtle: rgba(244, 67, 54, 0.3))
-- [ ] 5.4.5 Show indicators only after recalculation (not on initial load)
-- [ ] 5.4.6 Clear indicators on revert or next recalculation
+- [x] 5.4.1 Create ScoreDeltaIndicator component
+- [x] 5.4.2 Display format: `45.2 (+2.5)` or `38.7 (-1.3)`
+- [x] 5.4.3 Color positive deltas green (subtle: rgba(76, 175, 80, 0.3))
+- [x] 5.4.4 Color negative deltas red (subtle: rgba(244, 67, 54, 0.3))
+- [x] 5.4.5 Show indicators only after recalculation (not on initial load)
+- [x] 5.4.6 Clear indicators on revert or next recalculation
 - [ ] 5.4.7 Add sort option: "Sort by Score Change"
-- [ ] 5.4.8 Integrate into SmartScoreTable component
+- [x] 5.4.8 Integrate into SmartScoreTable component
 
 **Acceptance Criteria:**
 - Delta indicators display correctly
