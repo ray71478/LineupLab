@@ -7,8 +7,7 @@ on-demand from a configuration screen.
 """
 
 import logging
-import asyncio
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -22,8 +21,21 @@ get_db = None
 router = APIRouter(prefix="/api/refresh", tags=["refresh"])
 
 
+# Create a function that returns the current get_db function
+# This is needed because Depends() captures the function at decoration time,
+# so we need a wrapper that returns the latest get_db at runtime
+def _get_current_db_dependency():
+    """Get the current database dependency function."""
+    import sys
+    current_module = sys.modules[__name__]
+    if current_module.get_db is None:
+        raise RuntimeError("get_db not initialized. Make sure main.py has set up the dependency.")
+    # Return the generator from get_db
+    yield from current_module.get_db()
+
+
 @router.post("/mysportsfeeds")
-async def refresh_mysportsfeeds(db: Session = Depends(get_db)) -> Dict[str, Any]:
+async def refresh_mysportsfeeds(db: Session = Depends(_get_current_db_dependency)) -> Dict[str, Any]:
     """
     Manually trigger MySportsFeeds API data refresh.
 
