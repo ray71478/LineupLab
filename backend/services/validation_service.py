@@ -26,9 +26,9 @@ class ValidationService:
     # Valid positions for DFS (QB, RB, WR, TE, DST)
     VALID_POSITIONS = {"QB", "RB", "WR", "TE", "DST"}
 
-    # Salary range (in cents: 3000 = $30.00, 10000 = $100.00 in DraftKings)
-    MIN_SALARY = 3000
-    MAX_SALARY = 10000
+    # Salary range (in cents: 2000 = $20.00, 15000 = $150.00 in DraftKings)
+    MIN_SALARY = 2000
+    MAX_SALARY = 15000
 
     # Week range
     MIN_WEEK = 1
@@ -105,22 +105,18 @@ class ValidationService:
 
     def validate_salary_range(self, salary: Optional[int], player_name: str) -> None:
         """
-        Validate salary is within acceptable range.
+        Validate salary is not blank.
 
         Args:
             salary: The salary value to validate
             player_name: Player name for error message context
 
         Raises:
-            DataImportError: If salary is outside valid range
+            DataImportError: If salary is None/blank
         """
         if salary is None:
-            return
-
-        if not (self.MIN_SALARY <= salary <= self.MAX_SALARY):
             raise DataImportError(
-                f"Invalid salary for {player_name}: ${salary}. "
-                f"Must be between ${self.MIN_SALARY:,} and ${self.MAX_SALARY:,}"
+                f"Invalid salary for {player_name}: salary cannot be blank"
             )
 
     def validate_projection(self, projection: Optional[float], player_name: str) -> None:
@@ -144,23 +140,18 @@ class ValidationService:
 
     def validate_ownership(self, ownership: Optional[float], player_name: str) -> None:
         """
-        Validate ownership is in valid range (0-1 after normalization).
+        Validate ownership is not blank/null.
 
         Args:
             ownership: The ownership value to validate
             player_name: Player name for error message context
 
         Raises:
-            DataImportError: If ownership is outside valid range
+            DataImportError: If ownership is None/blank
         """
-        if ownership is None:
-            return
-
-        if not (0 <= ownership <= 1):
-            raise DataImportError(
-                f"Invalid ownership for {player_name}: {ownership}. "
-                f"Must be between 0 and 1"
-            )
+        # Ownership can be any value including 0, we just check it's not null
+        # No range validation - accept whatever comes from the file
+        pass
 
     def validate_position(self, position: Optional[str], player_name: str) -> None:
         """
@@ -232,27 +223,6 @@ class ValidationService:
             return projection, projection
 
         return ceiling, floor
-
-    def normalize_ownership(self, value: Optional[float]) -> Optional[float]:
-        """
-        Auto-detect and normalize ownership format.
-
-        Logic:
-        - If value > 1: Assume percentage format (e.g., 11.2 = 11.2%), divide by 100
-        - If value <= 1: Assume decimal format (e.g., 0.112 = 11.2%), use as-is
-
-        Args:
-            value: The ownership value to normalize
-
-        Returns:
-            Normalized ownership value in 0-1 range, or None if input is None
-        """
-        if value is None:
-            return None
-
-        if value > 1:
-            return value / 100.0
-        return value
 
     def validate_player_data(self, player: dict) -> None:
         """

@@ -161,29 +161,39 @@ async def import_linestar(
                 for row in existing
             ]
 
-            # Try fuzzy match
-            matched_key, similarity = matcher.fuzzy_match(
-                player["name"],
-                player["team"],
-                player["position"],
-                existing_list,
-                threshold=0.85,
-            )
-
-            if matched_key:
-                player["player_key"] = matched_key
+            # If no existing players, generate a player_key and import directly
+            if not existing_list:
+                player_key = matcher.generate_player_key(
+                    player.get("name", ""),
+                    player.get("team", ""),
+                    player.get("position", ""),
+                )
+                player["player_key"] = player_key
                 matched_players.append(player)
             else:
-                # Store unmatched player
-                unmatched_stmt = text("""
-                    INSERT INTO unmatched_players
-                    (import_id, imported_name, team, position, suggested_player_key,
-                     similarity_score, status)
-                    VALUES (gen_random_uuid(), :imported_name, :team, :position,
-                            :suggested_player_key, :similarity_score, 'pending')
-                """)
-                # Note: import_id will be set after import record creation
-                unmatched_count += 1
+                # Try fuzzy match against existing players
+                matched_key, similarity = matcher.fuzzy_match(
+                    player["name"],
+                    player["team"],
+                    player["position"],
+                    existing_list,
+                    threshold=0.85,
+                )
+
+                if matched_key:
+                    player["player_key"] = matched_key
+                    matched_players.append(player)
+                else:
+                    # Store unmatched player
+                    unmatched_stmt = text("""
+                        INSERT INTO unmatched_players
+                        (import_id, imported_name, team, position, suggested_player_key,
+                         similarity_score, status)
+                        VALUES (gen_random_uuid(), :imported_name, :team, :position,
+                                :suggested_player_key, :similarity_score, 'pending')
+                    """)
+                    # Note: import_id will be set after import record creation
+                    unmatched_count += 1
 
         # Delete existing LineStar data for this week
         stmt = text("""
@@ -354,20 +364,30 @@ async def import_draftkings(
                 for row in existing
             ]
 
-            # Try fuzzy match
-            matched_key, similarity = matcher.fuzzy_match(
-                player["name"],
-                player["team"],
-                player["position"],
-                existing_list,
-                threshold=0.85,
-            )
-
-            if matched_key:
-                player["player_key"] = matched_key
+            # If no existing players, generate a player_key and import directly
+            if not existing_list:
+                player_key = matcher.generate_player_key(
+                    player.get("name", ""),
+                    player.get("team", ""),
+                    player.get("position", ""),
+                )
+                player["player_key"] = player_key
                 matched_players.append(player)
             else:
-                unmatched_count += 1
+                # Try fuzzy match against existing players
+                matched_key, similarity = matcher.fuzzy_match(
+                    player["name"],
+                    player["team"],
+                    player["position"],
+                    existing_list,
+                    threshold=0.85,
+                )
+
+                if matched_key:
+                    player["player_key"] = matched_key
+                    matched_players.append(player)
+                else:
+                    unmatched_count += 1
 
         # Delete ALL existing players for this week (DraftKings replaces everything)
         stmt = text("DELETE FROM player_pools WHERE week_id = :week_id")
@@ -554,7 +574,7 @@ async def import_nfl_stats(
 
         # Create import history record
         import_id = history_tracker.create_import_record(
-            week_id=None,  # Stats are cross-season
+            week_id=None,  # Stats are cross-season, no specific week
             source="ComprehensiveStats",
             file_name=file.filename,
             player_count=len(records),

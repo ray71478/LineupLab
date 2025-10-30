@@ -14,6 +14,8 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
+from backend.services.player_alias_service import PlayerAliasService
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/unmatched-players", tags=["unmatched-players"])
@@ -182,21 +184,6 @@ async def map_unmatched_player(
                 "error": f"Canonical player with key {request.canonical_player_key} not found.",
             }
 
-        # Create alias
-        alias_stmt = text("""
-            INSERT INTO player_aliases (alias_name, canonical_player_key)
-            VALUES (:alias_name, :canonical_player_key)
-            ON CONFLICT (alias_name) DO UPDATE
-            SET canonical_player_key = :canonical_player_key
-        """)
-        db.execute(
-            alias_stmt,
-            {
-                "alias_name": unmatched[1],  # imported_name
-                "canonical_player_key": request.canonical_player_key,
-            }
-        )
-
         # Update unmatched player status
         update_stmt = text("""
             UPDATE unmatched_players
@@ -210,6 +197,17 @@ async def map_unmatched_player(
                 "player_key": request.canonical_player_key,
             }
         )
+
+        # Create alias using PlayerAliasService
+        alias_service = PlayerAliasService(db)
+        alias_success = alias_service.create_alias(
+            alias_name=unmatched[1],  # imported_name
+            canonical_player_key=request.canonical_player_key,
+        )
+
+        if not alias_success:
+            logger.warning(f"Failed to create alias for {unmatched[1]}")
+            # Don't fail the mapping operation if alias creation fails
 
         db.commit()
         db.close()

@@ -1,0 +1,86 @@
+# ============================================
+# Cortex DFS Lineup Optimizer - Docker Compose Configuration
+# ============================================
+# This file defines the PostgreSQL database service for local development
+# Version matches cloud deployment (PostgreSQL 15) for local-vs-cloud parity
+
+version: '3.8'
+
+services:
+  # ------------------------------------------
+  # PostgreSQL 15 Database Service
+  # ------------------------------------------
+  postgres:
+    image: postgres:15
+    container_name: cortex-postgres
+
+    # Environment variables for database initialization
+    environment:
+      POSTGRES_USER: cortex
+      POSTGRES_PASSWORD: cortex
+      POSTGRES_DB: cortex
+      # Optimize PostgreSQL for development
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
+
+    # Port mapping: expose PostgreSQL on localhost:5432 for SQL client access
+    # This allows connections via pgAdmin, DBeaver, or psql
+    ports:
+      - "5432:5432"
+
+    # Volume mount: persist data between container restarts
+    # Data stored in ./data directory (git-ignored)
+    volumes:
+      - ./data:/var/lib/postgresql/data
+
+    # Health check: verify PostgreSQL is ready to accept connections
+    # Used by init_db.sh script to wait for database before running migrations
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cortex -d cortex"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    # Restart policy: keep PostgreSQL running unless explicitly stopped
+    restart: unless-stopped
+
+    # Network configuration
+    networks:
+      - cortex-network
+
+# ------------------------------------------
+# Network Configuration
+# ------------------------------------------
+networks:
+  cortex-network:
+    driver: bridge
+
+# ------------------------------------------
+# Usage Instructions
+# ------------------------------------------
+# Start PostgreSQL:
+#   docker-compose up -d
+#
+# View logs:
+#   docker-compose logs -f postgres
+#
+# Stop PostgreSQL (keep data):
+#   docker-compose stop
+#
+# Stop PostgreSQL (remove containers but keep data):
+#   docker-compose down
+#
+# Stop PostgreSQL and DELETE ALL DATA:
+#   docker-compose down -v
+#
+# Restart PostgreSQL:
+#   docker-compose restart postgres
+#
+# Check PostgreSQL health:
+#   docker-compose ps
+#
+# Connect to PostgreSQL shell:
+#   docker-compose exec postgres psql -U cortex -d cortex
+#
+# Run database initialization script:
+#   ./init_db.sh
