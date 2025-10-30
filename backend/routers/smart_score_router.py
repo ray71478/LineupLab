@@ -92,6 +92,7 @@ async def calculate_smart_scores(
         )
 
     except Exception as e:
+        db.rollback()
         logger.error(f"Error calculating Smart Scores: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

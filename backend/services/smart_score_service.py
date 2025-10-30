@@ -322,10 +322,15 @@ class SmartScoreService:
             return FactorResult(value=0.0, used_default=False), 0
 
         # Get current week info to determine season
-        week_info = self.session.execute(
-            text("SELECT season FROM weeks WHERE id = :week_id"),
-            {"week_id": week_id},
-        ).fetchone()
+        try:
+            week_info = self.session.execute(
+                text("SELECT season FROM weeks WHERE id = :week_id"),
+                {"week_id": week_id},
+            ).fetchone()
+        except Exception as e:
+            logger.warning(f"Error querying weeks table: {e}")
+            self.session.rollback()
+            return FactorResult(value=0.0, used_default=True), 0
 
         if not week_info:
             return FactorResult(value=0.0, used_default=True), 0
@@ -335,10 +340,15 @@ class SmartScoreService:
         # Query historical stats for last 2-4 games with snaps >= 20
         # Note: Using week number from historical_stats, not week_id
         # We need to get the current week number first
-        current_week_info = self.session.execute(
-            text("SELECT week_number FROM weeks WHERE id = :week_id"),
-            {"week_id": week_id},
-        ).fetchone()
+        try:
+            current_week_info = self.session.execute(
+                text("SELECT week_number FROM weeks WHERE id = :week_id"),
+                {"week_id": week_id},
+            ).fetchone()
+        except Exception as e:
+            logger.warning(f"Error querying weeks table for week_number: {e}")
+            self.session.rollback()
+            return FactorResult(value=0.0, used_default=True), 0
 
         if not current_week_info:
             return FactorResult(value=0.0, used_default=True), 0
@@ -463,10 +473,15 @@ class SmartScoreService:
             return False, True
 
         # Get current week info to determine previous week
-        week_info = self.session.execute(
-            text("SELECT week_number, season FROM weeks WHERE id = :week_id"),
-            {"week_id": week_id},
-        ).fetchone()
+        try:
+            week_info = self.session.execute(
+                text("SELECT week_number, season FROM weeks WHERE id = :week_id"),
+                {"week_id": week_id},
+            ).fetchone()
+        except Exception as e:
+            logger.warning(f"Error querying weeks table for regression risk: {e}")
+            self.session.rollback()
+            return False, False
 
         if not week_info:
             return False, False
@@ -509,6 +524,7 @@ class SmartScoreService:
 
         except Exception as e:
             logger.warning(f"Error checking regression risk for {player.player_key}: {e}")
+            self.session.rollback()
             return False, False
 
     def _calculate_w7_vegas_context(
@@ -559,6 +575,7 @@ class SmartScoreService:
                 used_default = True
         except Exception as e:
             logger.warning(f"Error querying team ITT for {player.team}: {e}")
+            self.session.rollback()
             team_itt = league_avg_itt
             used_default = True
 
@@ -658,6 +675,8 @@ class SmartScoreService:
             )
         except Exception as e:
             logger.warning(f"Error calculating league avg ownership: {e}")
+            # Rollback to clear the failed transaction state
+            self.session.rollback()
             defaults["league_avg_ownership"] = 0.0
 
         # Calculate league average ITT
@@ -676,6 +695,8 @@ class SmartScoreService:
             )
         except Exception as e:
             logger.warning(f"Error calculating league avg ITT: {e}")
+            # Rollback to clear the failed transaction state
+            self.session.rollback()
             defaults["league_avg_itt"] = self.DEFAULT_LEAGUE_AVG_ITT
 
         # Cache defaults
