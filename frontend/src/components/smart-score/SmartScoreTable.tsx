@@ -1,17 +1,18 @@
 /**
  * SmartScoreTable Component
  *
- * Table component displaying players with Smart Scores, sortable columns, and virtual scrolling.
+ * Table component displaying players with Smart Scores, sortable columns, and filtering.
  * - Displays player name, team, position, salary, projection, ownership, Smart Score
  * - Shows projection source, 20+ snap games count, regression risk indicator
- * - Supports sorting and filtering
+ * - Supports sorting by all columns
+ * - Position filtering
+ * - Compact table design for better space utilization
  * - Optimized with React.memo for performance
- * - Virtual scrolling ready (can be enhanced with @tanstack/react-virtual)
  *
- * Design: Dark theme with Smart Score column highlighted
+ * Design: Dark theme with Smart Score column highlighted, compact rows
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box,
   Paper,
@@ -26,7 +27,21 @@ import {
   Alert,
   useTheme,
   useMediaQuery,
+  Chip,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
 } from '@mui/material';
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+  SortingState,
+  ColumnDef,
+  flexRender,
+} from '@tanstack/react-table';
 import type { PlayerScoreResponse } from '../../types/smartScore.types';
 import { ScoreDeltaIndicator } from './ScoreDeltaIndicator';
 import { RegressionRiskBadge } from './RegressionRiskBadge';
@@ -38,64 +53,6 @@ export interface SmartScoreTableProps {
   scoreDeltas?: Map<number, number>;
 }
 
-// Memoized table row component for performance
-const SmartScoreTableRow = React.memo<{
-  player: PlayerScoreResponse;
-  scoreDelta?: number;
-  showDelta: boolean;
-}>(({ player, scoreDelta, showDelta }) => (
-  <TableRow hover>
-    <TableCell>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        {player.name}
-        <MissingDataIndicator
-          missingDataIndicators={player.score_breakdown?.missing_data_indicators}
-        />
-      </Box>
-    </TableCell>
-    <TableCell>{player.team}</TableCell>
-    <TableCell>{player.position}</TableCell>
-    <TableCell>
-      ${((player.salary || 0) / 100).toFixed(0)}
-    </TableCell>
-    <TableCell>{player.projection?.toFixed(2) || '-'}</TableCell>
-    <TableCell>
-      {player.ownership
-        ? `${(player.ownership * 100).toFixed(1)}%`
-        : '-'}
-    </TableCell>
-    <TableCell
-      sx={{
-        backgroundColor: 'rgba(255, 140, 66, 0.1)',
-        fontWeight: 600,
-        borderLeft: '2px solid #ff8c42',
-        borderRight: '2px solid #ff8c42',
-      }}
-    >
-      <ScoreDeltaIndicator
-        score={player.smart_score}
-        delta={scoreDelta}
-        showDelta={showDelta}
-      />
-    </TableCell>
-    <TableCell>{player.projection_source || '-'}</TableCell>
-    <TableCell>{player.games_with_20_plus_snaps || '-'}</TableCell>
-    <TableCell>
-      {player.regression_risk && player.position === 'WR' ? (
-        <RegressionRiskBadge
-          regressionRisk={player.regression_risk}
-          position={player.position}
-          hasHistoricalData={player.games_with_20_plus_snaps !== null && player.games_with_20_plus_snaps !== undefined}
-        />
-      ) : (
-        '-'
-      )}
-    </TableCell>
-  </TableRow>
-));
-
-SmartScoreTableRow.displayName = 'SmartScoreTableRow';
-
 export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
   players,
   isLoading = false,
@@ -103,9 +60,184 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [sorting, setSorting] = useState<SortingState>([
+    { id: 'smart_score', desc: true }, // Default sort by Smart Score descending
+  ]);
+  const [positionFilter, setPositionFilter] = useState<string>('all');
 
   // Memoize showDelta flag
   const showDelta = useMemo(() => scoreDeltas.size > 0, [scoreDeltas.size]);
+
+  // Get unique positions for filter
+  const positions = useMemo(() => {
+    const unique = Array.from(new Set(players.map(p => p.position))).sort();
+    return unique;
+  }, [players]);
+
+  // Filter players by position
+  const filteredPlayers = useMemo(() => {
+    if (positionFilter === 'all') return players;
+    return players.filter(p => p.position === positionFilter);
+  }, [players, positionFilter]);
+
+  // Column definitions
+  const columns = useMemo<ColumnDef<PlayerScoreResponse>[]>(
+    () => [
+      {
+        id: 'name',
+        accessorKey: 'name',
+        header: 'Player',
+        size: 150,
+        cell: ({ row }) => (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+              {row.original.name}
+            </Typography>
+            <MissingDataIndicator
+              missingDataIndicators={row.original.score_breakdown?.missing_data_indicators}
+            />
+          </Box>
+        ),
+      },
+      {
+        id: 'team',
+        accessorKey: 'team',
+        header: 'Team',
+        size: 60,
+        cell: ({ getValue }) => (
+          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+            {getValue() as string}
+          </Typography>
+        ),
+      },
+      {
+        id: 'position',
+        accessorKey: 'position',
+        header: 'Pos',
+        size: 50,
+        cell: ({ getValue }) => (
+          <Chip
+            label={getValue() as string}
+            size="small"
+            sx={{
+              height: 20,
+              fontSize: '0.7rem',
+              fontWeight: 600,
+            }}
+          />
+        ),
+      },
+      {
+        id: 'salary',
+        accessorKey: 'salary',
+        header: 'Salary',
+        size: 70,
+        cell: ({ getValue }) => (
+          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+            ${(((getValue() as number) || 0) / 100).toFixed(0)}
+          </Typography>
+        ),
+      },
+      {
+        id: 'projection',
+        accessorKey: 'projection',
+        header: 'Proj',
+        size: 70,
+        cell: ({ getValue }) => (
+          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+            {(getValue() as number)?.toFixed(2) || '-'}
+          </Typography>
+        ),
+      },
+      {
+        id: 'ownership',
+        accessorKey: 'ownership',
+        header: 'Own %',
+        size: 70,
+        cell: ({ getValue }) => (
+          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+            {(getValue() as number)
+              ? `${((getValue() as number) * 100).toFixed(1)}%`
+              : '-'}
+          </Typography>
+        ),
+      },
+      {
+        id: 'smart_score',
+        accessorKey: 'smart_score',
+        header: 'Smart Score',
+        size: 100,
+        cell: ({ row }) => {
+          const player = row.original;
+          const scoreDelta = scoreDeltas.get(player.player_id);
+          return (
+            <ScoreDeltaIndicator
+              score={player.smart_score}
+              delta={scoreDelta}
+              showDelta={showDelta}
+            />
+          );
+        },
+      },
+      {
+        id: 'projection_source',
+        accessorKey: 'projection_source',
+        header: 'Source',
+        size: 70,
+        cell: ({ getValue }) => (
+          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+            {getValue() as string || '-'}
+          </Typography>
+        ),
+      },
+      {
+        id: 'games_with_20_plus_snaps',
+        accessorKey: 'games_with_20_plus_snaps',
+        header: '20+ Snaps',
+        size: 70,
+        cell: ({ getValue }) => (
+          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+            {getValue() !== null && getValue() !== undefined ? String(getValue()) : '-'}
+          </Typography>
+        ),
+      },
+      {
+        id: 'regression_risk',
+        accessorFn: (row) => row.regression_risk,
+        header: 'Risk',
+        size: 60,
+        cell: ({ row }) => {
+          const player = row.original;
+          return player.regression_risk && player.position === 'WR' ? (
+            <RegressionRiskBadge
+              regressionRisk={player.regression_risk}
+              position={player.position}
+              hasHistoricalData={
+                player.games_with_20_plus_snaps !== null &&
+                player.games_with_20_plus_snaps !== undefined
+              }
+            />
+          ) : (
+            <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>-</Typography>
+          );
+        },
+      },
+    ],
+    [scoreDeltas, showDelta]
+  );
+
+  // Initialize table
+  const table = useReactTable({
+    data: filteredPlayers,
+    columns,
+    state: {
+      sorting,
+    },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+  });
 
   if (isLoading && players.length === 0) {
     return (
@@ -132,39 +264,126 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         overflow: 'hidden',
       }}
     >
+      {/* Filter Bar */}
+      <Box
+        sx={{
+          p: 1.5,
+          borderBottom: '1px solid rgba(255, 140, 66, 0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2,
+          flexWrap: 'wrap',
+        }}
+      >
+        <FormControl size="small" sx={{ minWidth: 120 }}>
+          <InputLabel sx={{ fontSize: '0.875rem' }}>Position</InputLabel>
+          <Select
+            value={positionFilter}
+            label="Position"
+            onChange={(e) => setPositionFilter(e.target.value)}
+            sx={{ fontSize: '0.875rem', height: 32 }}
+          >
+            <MenuItem value="all">All Positions</MenuItem>
+            {positions.map((pos) => (
+              <MenuItem key={pos} value={pos}>
+                {pos}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <Typography variant="body2" sx={{ color: 'text.secondary', ml: 'auto' }}>
+          Showing {filteredPlayers.length} of {players.length} players
+        </Typography>
+      </Box>
+
       <TableContainer sx={{ maxHeight: { xs: '60vh', md: '70vh' }, overflowX: 'auto' }}>
-        <Table stickyHeader size={isMobile ? 'small' : 'medium'}>
+        <Table stickyHeader size="small" sx={{ '& .MuiTableCell-root': { py: 0.75 } }}>
           <TableHead>
-            <TableRow>
-              <TableCell sx={{ fontWeight: 600 }}>Player</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Team</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Pos</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Salary</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Projection</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Ownership</TableCell>
-              <TableCell
-                sx={{
-                  fontWeight: 600,
-                  backgroundColor: 'rgba(255, 140, 66, 0.15)',
-                  borderLeft: '2px solid #ff8c42',
-                  borderRight: '2px solid #ff8c42',
-                }}
-              >
-                Smart Score
-              </TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Source</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>20+ Snaps</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Risk</TableCell>
-            </TableRow>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => {
+                  const isSortable = header.column.getCanSort();
+                  const isSorted = header.column.getIsSorted();
+                  const isSmartScore = header.id === 'smart_score';
+
+                  return (
+                    <TableCell
+                      key={header.id}
+                      sx={{
+                        fontWeight: 600,
+                        fontSize: '0.8rem',
+                        cursor: isSortable ? 'pointer' : 'default',
+                        userSelect: 'none',
+                        backgroundColor: isSmartScore
+                          ? 'rgba(255, 140, 66, 0.15)'
+                          : 'inherit',
+                        borderLeft: isSmartScore ? '2px solid #ff8c42' : 'none',
+                        borderRight: isSmartScore ? '2px solid #ff8c42' : 'none',
+                        '&:hover': isSortable ? { backgroundColor: 'rgba(255, 255, 255, 0.05)' } : {},
+                      }}
+                      onClick={header.column.getToggleSortingHandler()}
+                    >
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                        }}
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {isSortable && (
+                          <Box
+                            component="span"
+                            sx={{
+                              fontSize: '0.7rem',
+                              opacity: isSorted ? 1 : 0.3,
+                              transition: 'opacity 0.2s',
+                            }}
+                          >
+                            {isSorted === 'asc' ? '▲' : isSorted === 'desc' ? '▼' : '⇅'}
+                          </Box>
+                        )}
+                      </Box>
+                    </TableCell>
+                  );
+                })}
+              </TableRow>
+            ))}
           </TableHead>
           <TableBody>
-            {players.map((player) => (
-              <SmartScoreTableRow
-                key={player.player_id}
-                player={player}
-                scoreDelta={scoreDeltas.get(player.player_id)}
-                showDelta={showDelta}
-              />
+            {table.getRowModel().rows.map((row) => (
+              <TableRow
+                key={row.id}
+                hover
+                sx={{
+                  '& .MuiTableCell-root': {
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                  },
+                  '&:nth-of-type(even)': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                  },
+                }}
+              >
+                {row.getVisibleCells().map((cell) => {
+                  const isSmartScore = cell.column.id === 'smart_score';
+                  return (
+                    <TableCell
+                      key={cell.id}
+                      sx={{
+                        fontSize: '0.875rem',
+                        backgroundColor: isSmartScore
+                          ? 'rgba(255, 140, 66, 0.1)'
+                          : 'inherit',
+                        borderLeft: isSmartScore ? '2px solid #ff8c42' : 'none',
+                        borderRight: isSmartScore ? '2px solid #ff8c42' : 'none',
+                        fontWeight: isSmartScore ? 600 : 'normal',
+                      }}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  );
+                })}
+              </TableRow>
             ))}
           </TableBody>
         </Table>
