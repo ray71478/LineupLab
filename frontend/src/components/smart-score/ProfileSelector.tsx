@@ -113,22 +113,28 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', mb: 2 }}>
-        <FormControl fullWidth sx={{ minWidth: 200 }}>
-          <InputLabel>Profile</InputLabel>
+      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', mb: 1.5 }}>
+        <FormControl fullWidth size="small" sx={{ flex: 1 }}>
+          <InputLabel sx={{ fontSize: '0.875rem' }}>Profile</InputLabel>
           <Select
             value={currentProfile?.id || ''}
             label="Profile"
             onChange={(e) => handleProfileSelect(e.target.value as number)}
             disabled={isLoading}
+            sx={{
+              fontSize: '0.875rem',
+              '& .MuiSelect-select': {
+                py: 1,
+              },
+            }}
           >
             {profiles.map((profile) => (
-              <MenuItem key={profile.id} value={profile.id}>
+              <MenuItem key={profile.id} value={profile.id} sx={{ fontSize: '0.875rem' }}>
                 {profile.name}
                 {profile.is_default && (
                   <Typography
                     component="span"
-                    sx={{ ml: 1, fontSize: '0.75rem', color: 'text.secondary' }}
+                    sx={{ ml: 1, fontSize: '0.7rem', color: 'text.secondary' }}
                   >
                     (Default)
                   </Typography>
@@ -139,19 +145,24 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
         </FormControl>
         <Button
           variant="outlined"
-          startIcon={<SaveIcon />}
+          startIcon={<SaveIcon sx={{ fontSize: '1rem' }} />}
           onClick={handleOpenSaveDialog}
           disabled={isLoading}
+          size="small"
           sx={{
             borderColor: 'rgba(255, 255, 255, 0.2)',
             color: 'text.primary',
+            fontSize: '0.8rem',
+            px: 1.5,
+            py: 0.75,
+            whiteSpace: 'nowrap',
             '&:hover': {
               borderColor: '#ff8c42',
               backgroundColor: 'rgba(255, 140, 66, 0.08)',
             },
           }}
         >
-          Save Profile
+          Save
         </Button>
       </Box>
 

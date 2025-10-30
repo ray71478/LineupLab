@@ -106,7 +106,7 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
   return (
     <Paper
       sx={{
-        p: { xs: 2, md: 3 },
+        p: { xs: 1.5, md: 2 },
         backgroundColor: '#1a1a2e',
         border: '1px solid rgba(255, 140, 66, 0.2)',
         borderRadius: 2,
@@ -117,10 +117,10 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          mb: 2,
+          mb: 1.5,
         }}
       >
-        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600, fontSize: '0.95rem' }}>
           Weight Adjustment
         </Typography>
         {isMobile && (
@@ -129,30 +129,31 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
             size="small"
             sx={{
               color: 'text.secondary',
+              padding: '4px',
               '&:hover': {
                 backgroundColor: 'rgba(255, 140, 66, 0.1)',
               },
             }}
           >
-            {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            {expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
           </IconButton>
         )}
       </Box>
 
       <Collapse in={expanded}>
         {/* Profile Selector */}
-        <Box sx={{ mb: 3 }}>
+        <Box sx={{ mb: 2 }}>
           <ProfileSelector
             currentWeights={localWeights}
             currentConfig={localConfig}
           />
         </Box>
 
-        <Divider sx={{ mb: 3 }} />
+        <Divider sx={{ mb: 2 }} />
 
         {/* Projection Source Selector */}
-      <FormControl fullWidth sx={{ mb: 3 }}>
-        <InputLabel>Projection Source</InputLabel>
+      <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+        <InputLabel sx={{ fontSize: '0.875rem' }}>Projection Source</InputLabel>
           <Select
             value={localConfig.projection_source}
             label="Projection Source"
@@ -162,23 +163,29 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
                 projection_source: e.target.value as 'ETR' | 'LineStar',
               })
             }
+            sx={{
+              fontSize: '0.875rem',
+              '& .MuiSelect-select': {
+                py: 1,
+              },
+            }}
           >
-          <MenuItem value="ETR">Establish The Run (ETR)</MenuItem>
-          <MenuItem value="LineStar">LineStar</MenuItem>
+          <MenuItem value="ETR" sx={{ fontSize: '0.875rem' }}>Establish The Run (ETR)</MenuItem>
+          <MenuItem value="LineStar" sx={{ fontSize: '0.875rem' }}>LineStar</MenuItem>
         </Select>
       </FormControl>
 
-      <Divider sx={{ mb: 3 }} />
+      <Divider sx={{ mb: 2 }} />
 
       {/* Weight Sliders */}
-      <Stack spacing={3}>
+      <Stack spacing={1.5}>
         {(Object.keys(WEIGHT_LABELS) as Array<keyof WeightProfile>).map((key) => (
           <Box key={key}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-              <Typography variant="body2" sx={{ fontWeight: 500 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+              <Typography variant="caption" sx={{ fontWeight: 500, fontSize: '0.75rem' }}>
                 {WEIGHT_LABELS[key]}
               </Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 50, textAlign: 'right' }}>
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem', minWidth: 45, textAlign: 'right' }}>
                 {localWeights[key].toFixed(3)}
               </Typography>
             </Box>
@@ -188,12 +195,22 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
               max={1}
               step={0.001}
               onChange={(_, value) => handleWeightChange(key, value as number)}
+              size="small"
               sx={{
                 color: '#ff8c42',
+                height: 4,
                 '& .MuiSlider-thumb': {
+                  width: 14,
+                  height: 14,
                   '&:hover': {
-                    boxShadow: '0 0 0 8px rgba(255, 140, 66, 0.16)',
+                    boxShadow: '0 0 0 6px rgba(255, 140, 66, 0.16)',
                   },
+                },
+                '& .MuiSlider-track': {
+                  height: 3,
+                },
+                '& .MuiSlider-rail': {
+                  height: 3,
                 },
               }}
             />
@@ -201,21 +218,23 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
         ))}
       </Stack>
 
-      <Divider sx={{ my: 3 }} />
+      <Divider sx={{ my: 2 }} />
 
       {/* Action Buttons */}
-      <Stack spacing={2}>
+      <Stack spacing={1.5}>
         <Button
           variant="contained"
           fullWidth
           onClick={handleApply}
           disabled={isCalculating}
+          size="small"
           sx={{
             backgroundColor: '#ff8c42',
+            fontSize: '0.875rem',
+            py: 0.75,
             '&:hover': {
               backgroundColor: '#e65a2b',
             },
-            minHeight: { xs: 44, md: 36 }, // Touch-friendly on mobile
           }}
         >
           {isCalculating ? 'Calculating...' : 'Apply'}
@@ -225,8 +244,10 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
           fullWidth
           onClick={onReset}
           disabled={isCalculating}
+          size="small"
           sx={{
-            minHeight: { xs: 44, md: 36 }, // Touch-friendly on mobile
+            fontSize: '0.875rem',
+            py: 0.75,
           }}
         >
           Reset to Default

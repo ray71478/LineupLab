@@ -132,11 +132,15 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         accessorKey: 'salary',
         header: 'Salary',
         size: 70,
-        cell: ({ getValue }) => (
-          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-            ${(((getValue() as number) || 0) / 100).toFixed(0)}
-          </Typography>
-        ),
+        cell: ({ getValue }) => {
+          const salary = getValue() as number;
+          // Display as stored in spreadsheet (e.g., 7300 = $7,300)
+          return (
+            <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+              ${salary?.toLocaleString('en-US') || '-'}
+            </Typography>
+          );
+        },
       },
       {
         id: 'projection',
@@ -154,13 +158,23 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         accessorKey: 'ownership',
         header: 'Own %',
         size: 70,
-        cell: ({ getValue }) => (
-          <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-            {(getValue() as number)
-              ? `${((getValue() as number) * 100).toFixed(1)}%`
-              : '-'}
-          </Typography>
-        ),
+        cell: ({ getValue }) => {
+          const ownership = getValue() as number;
+          // Display exactly as stored in spreadsheet (all values are percentages)
+          // 0.60 = 0.60%, 16.9 = 16.9%
+          if (ownership === null || ownership === undefined) {
+            return <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>-</Typography>;
+          }
+          // Format with appropriate decimal places
+          const formatted = ownership % 1 === 0 
+            ? ownership.toFixed(0) 
+            : ownership.toFixed(1);
+          return (
+            <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+              {formatted}%
+            </Typography>
+          );
+        },
       },
       {
         id: 'smart_score',
