@@ -272,46 +272,49 @@ class DataImporter:
                 # Convert NaN to None
                 player = {k: (None if pd.isna(v) else v) for k, v in player.items()}
 
-            # For player pools: process salary
-            if source.lower() in ["linestar", "draftkings"]:
-                # Ensure salary is an integer (store as-is from file)
-                if player.get("salary") is not None:
-                    player["salary"] = int(player["salary"])
+                # For player pools: process salary
+                if source.lower() in ["linestar", "draftkings"]:
+                    # Ensure salary is an integer (store as-is from file)
+                    if player.get("salary") is not None:
+                        player["salary"] = int(player["salary"])
 
-                # Generate player_key for player pools
-                player["player_key"] = self.matcher.generate_player_key(
-                    player["name"], player["team"], player["position"]
-                )
+                    # Generate player_key for player pools
+                    player["player_key"] = self.matcher.generate_player_key(
+                        player["name"], player["team"], player["position"]
+                    )
 
-                # Categorize opponent rank (LineStar only)
-                if source.lower() == "linestar":
-                    opp_rank = player.get("opponent_rank")
-                    player["opponent_rank_category"] = self._categorize_opponent_rank(opp_rank)
-                else:
-                    player["opponent_rank_category"] = None
+                    # Categorize opponent rank (LineStar only)
+                    if source.lower() == "linestar":
+                        opp_rank = player.get("opponent_rank")
+                        player["opponent_rank_category"] = self._categorize_opponent_rank(opp_rank)
+                    else:
+                        player["opponent_rank_category"] = None
 
-                # Set projection_source based on source
-                # For DraftKings, we'll default to LineStar unless ETR is specified
-                # ETR can be specified via a parameter, but for now default to source name
-                if source.lower() == "linestar":
-                    player["projection_source"] = "LineStar"
-                elif source.lower() == "draftkings":
-                    # Default to LineStar for DraftKings imports (can be overridden to ETR)
-                    player["projection_source"] = "LineStar"
-                else:
-                    player["projection_source"] = None
+                    # Set projection_source based on source
+                    # For DraftKings, we'll default to LineStar unless ETR is specified
+                    # ETR can be specified via a parameter, but for now default to source name
+                    if source.lower() == "linestar":
+                        player["projection_source"] = "LineStar"
+                    elif source.lower() == "draftkings":
+                        # Default to LineStar for DraftKings imports (can be overridden to ETR)
+                        player["projection_source"] = "LineStar"
+                    else:
+                        player["projection_source"] = None
 
-                # Validate business rules
-                self.validator.validate_player_data(player)
+                    # Validate business rules
+                    self.validator.validate_player_data(player)
+                    
+                    # Append player to list
+                    players.append(player)
 
-            # For historical stats: generate player_key differently
-            elif source.lower() == "comprehensive_stats":
-                # Use original name (not normalized) for historical stats
-                player["player_key"] = self.matcher.generate_player_key(
-                    player["player_name"], player["team"], player["position"]
-                )
+                # For historical stats: generate player_key differently
+                elif source.lower() == "comprehensive_stats":
+                    # Use original name (not normalized) for historical stats
+                    player["player_key"] = self.matcher.generate_player_key(
+                        player["player_name"], player["team"], player["position"]
+                    )
 
-                players.append(player)
+                    players.append(player)
 
             logger.info(f"Normalized {len(players)} players for {source}")
 

@@ -66,7 +66,7 @@ export const HomePage: React.FC = () => {
       description: 'AI-powered player scoring system that helps you identify the best value picks.',
       icon: <ScienceIcon />,
       route: '/smart-score',
-      enabled: false,
+      enabled: true,
     },
     {
       id: 'analytics',
