@@ -152,10 +152,12 @@ class SmartScoreService:
         w5_result, games_with_20_plus_snaps = self._calculate_w5_trend_adjustment(
             player, week_id, weights.W5
         )
-        # W6: MVP - Visual flag only, no penalty calculation
-        w6_result = FactorResult(value=0.0, used_default=False)
+        # W6: Regression Penalty - Only applies to WRs who had big weeks
         regression_risk, has_regression_data = self._calculate_w6_regression_risk(
             player, week_id, config
+        )
+        w6_result = self._calculate_w6_regression_penalty(
+            player, regression_risk, weights.W6
         )
         w7_result = self._calculate_w7_vegas_context(
             player, week_id, weights.W7, defaults
@@ -230,10 +232,17 @@ class SmartScoreService:
         defaults: Dict[str, float],
     ) -> FactorResult:
         """
-        Calculate W2: Ceiling Factor.
+        Calculate W2: Ceiling Factor - Differential boost for high-ceiling players.
 
-        Formula: (ceiling - floor) × W2
-        If missing: Estimate based on projection volatility or position defaults
+        Players with higher ceilings (higher upside) get proportionally larger boosts.
+        This is differential: a player with ceiling 30 vs floor 15 gets MORE boost
+        than a player with ceiling 25 vs floor 20 when weight is increased.
+
+        Formula when ceiling/floor available:
+        ceiling_range = (ceiling - floor) × weight
+        Higher ceiling_range = larger additive boost to smart score
+
+        If missing: Estimate based on position defaults
 
         Args:
             player: Player data
@@ -245,8 +254,9 @@ class SmartScoreService:
             FactorResult with calculated value
         """
         if player.ceiling is not None and player.floor is not None:
-            ceiling_factor = player.ceiling - player.floor
-            value = ceiling_factor * weight
+            # Differential: higher ceiling gets more benefit
+            ceiling_range = player.ceiling - player.floor
+            value = ceiling_range * weight
             return FactorResult(value=value, used_default=False)
 
         # Estimate based on position defaults
@@ -555,6 +565,48 @@ class SmartScoreService:
             self.session.rollback()
             return False, False
 
+    def _calculate_w6_regression_penalty(
+        self,
+        player: PlayerData,
+        regression_risk: bool,
+        weight: float,
+    ) -> FactorResult:
+        """
+        Calculate W6: Regression Penalty for WR players only.
+
+        Penalizes WRs who had big weeks (triggered 80-20 rule) because they're
+        likely to regress toward their mean. Non-WR positions return 0 penalty.
+
+        Formula for WRs with regression_risk=True:
+        value = -weight (negative adjustment)
+
+        For all other cases: value = 0
+
+        Args:
+            player: Player data
+            regression_risk: Whether this player has regression risk (only set for WRs)
+            weight: W6 weight
+
+        Returns:
+            FactorResult with calculated penalty (negative)
+        """
+        # Only apply regression penalty to WRs
+        if player.position != "WR":
+            return FactorResult(value=0.0, used_default=False)
+
+        # Apply penalty only if regression risk detected
+        if regression_risk:
+            # Negative penalty (reduces smart score)
+            value = -weight
+            return FactorResult(
+                value=value,
+                used_default=False,
+                breakdown_info="WR had big week, regression expected"
+            )
+
+        # No regression risk
+        return FactorResult(value=0.0, used_default=False)
+
     def _calculate_w7_vegas_context(
         self,
         player: PlayerData,
@@ -563,18 +615,17 @@ class SmartScoreService:
         defaults: Dict[str, float],
     ) -> FactorResult:
         """
-        Calculate W7: Vegas Context using multi-dimensional Vegas analysis.
+        Calculate W7: Vegas Context based on Implied Team Total (ITT).
 
-        Enhanced formula uses:
-        1. ITT ratio: (team_itt / league_avg_itt)
-        2. Spread leverage: Wider spreads = more volatility/ceiling upside
-        3. Moneyline strength: Odds indicate game competitiveness
+        Vegas implied team totals are the market's estimate of team scoring.
+        Higher ITT = Vegas expects more points from the team = better opportunities.
 
-        Combined: ((itt_ratio × 0.5) + (spread_leverage × 0.3) + (moneyline_strength × 0.2)) × W7
+        Formula: ((team_itt - league_avg_itt) / league_avg_itt) × weight
 
-        Data sources:
-        - consensus spreads/moneyline from sportsbook_odds
-        - Falls back to vegas_lines if sportsbook data unavailable
+        This creates a differential boost where:
+        - Teams with ITT > 22.5: Get positive boost proportional to how high
+        - Teams with ITT = 22.5: Get 0 boost (neutral)
+        - Teams with ITT < 22.5: Get negative adjustment (unfavorable matchup)
 
         Args:
             player: Player data
@@ -587,41 +638,8 @@ class SmartScoreService:
         """
         league_avg_itt = defaults.get("league_avg_itt", self.DEFAULT_LEAGUE_AVG_ITT)
 
-        # Query consensus Vegas data
         try:
-            # Get consensus spreads from all sportsbooks
-            spreads_result = self.session.execute(
-                text("""
-                    SELECT AVG(ABS(spread)) as avg_abs_spread, COUNT(*) as sportsbook_count
-                    FROM sportsbook_odds
-                    WHERE week_id = :week_id
-                      AND team = :team
-                      AND spread IS NOT NULL
-                """),
-                {"week_id": week_id, "team": player.team},
-            ).fetchone()
-
-            consensus_spread = (
-                abs(spreads_result.avg_abs_spread) if spreads_result and spreads_result.avg_abs_spread else 0
-            )
-
-            # Get consensus moneyline
-            moneyline_result = self.session.execute(
-                text("""
-                    SELECT AVG(moneyline_odds) as avg_moneyline
-                    FROM sportsbook_odds
-                    WHERE week_id = :week_id
-                      AND team = :team
-                      AND moneyline_odds IS NOT NULL
-                """),
-                {"week_id": week_id, "team": player.team},
-            ).fetchone()
-
-            avg_moneyline = (
-                moneyline_result.avg_moneyline if moneyline_result and moneyline_result.avg_moneyline else 0
-            )
-
-            # Get team ITT for baseline
+            # Get team's implied team total
             itt_result = self.session.execute(
                 text("""
                     SELECT implied_team_total
@@ -642,46 +660,22 @@ class SmartScoreService:
             logger.warning(f"Error querying Vegas data for {player.team}: {e}")
             self.session.rollback()
             team_itt = league_avg_itt
-            consensus_spread = 0
-            avg_moneyline = 0
             used_default = True
 
         if league_avg_itt <= 0:
             # Avoid division by zero
             return FactorResult(value=0.0, used_default=True)
 
-        # Component 1: ITT Ratio (50% weight)
-        itt_ratio = team_itt / league_avg_itt
-        itt_component = itt_ratio * 0.5
+        # ITT Differential: (team_itt - avg) / avg
+        # Positive when team_itt > avg (favorable)
+        # Negative when team_itt < avg (unfavorable)
+        itt_differential = (team_itt - league_avg_itt) / league_avg_itt
 
-        # Component 2: Spread Leverage (30% weight)
-        # Wider spreads (>7.5) = higher volatility = higher ceiling upside
-        # Range from 0.8 (tight spread) to 1.2 (wide spread)
-        if consensus_spread > 0:
-            spread_component = (0.8 + (min(consensus_spread / 10.0, 0.4))) * 0.3
-        else:
-            spread_component = 1.0 * 0.3
+        # Apply weight to differential
+        # This means different players benefit differently based on their team's ITT
+        value = itt_differential * weight
 
-        # Component 3: Moneyline Strength (20% weight)
-        # Negative moneyline (favorite) = -110 or worse = sharper line
-        # Positive moneyline (underdog) = +100 or better = less sharp
-        # Range from 0.9 (underdog, +400) to 1.1 (favorite, -400)
-        if avg_moneyline < -150:
-            moneyline_component = 1.1 * 0.2  # Strong favorite
-        elif avg_moneyline < -110:
-            moneyline_component = 1.0 * 0.2  # Slight favorite
-        elif avg_moneyline < 100:
-            moneyline_component = 0.95 * 0.2  # Slight underdog
-        else:
-            moneyline_component = 0.9 * 0.2  # Underdog
-
-        # Combine components
-        combined_ratio = itt_component + spread_component + moneyline_component
-        value = combined_ratio * weight
-
-        breakdown_info = (
-            f"ITT:{itt_ratio:.2f} Spread:{consensus_spread:.1f} ML:{avg_moneyline:.0f}"
-        )
+        breakdown_info = f"ITT:{team_itt:.2f} vs Avg:{league_avg_itt:.2f}"
 
         return FactorResult(value=value, used_default=used_default, breakdown_info=breakdown_info)
 
@@ -689,83 +683,29 @@ class SmartScoreService:
         self, player: PlayerData, week_id: int, weight: float
     ) -> FactorResult:
         """
-        Calculate W8: Matchup Adjustment using Vegas spreads + defensive rankings.
+        Calculate W8: Matchup Adjustment - DISABLED
 
-        Enhanced formula combines:
-        1. Opponent defensive ranking (traditional)
-        2. Spread-based strength: Favorite spreads indicate stronger opponent
+        This factor is currently disabled pending:
+        - Access to reliable opponent defensive ranking data
+        - Clearer methodology for matchup quality assessment
 
-        Formula: ((rank_category × 0.7) + (spread_strength × 0.3)) × W8
-
-        Spread strength interpretation:
-        - Opponent is 7+ point favorite: Strong defense (value: -1.0)
-        - Opponent is 0-7 point favorite: Good defense (value: -0.5)
-        - Close spread: Middle tier (value: 0.0)
-        - Your team favorite: Weak opponent defense (value: +0.5 to +1.0)
+        W8 weight slider exists for future use but currently has no effect.
 
         Args:
             player: Player data
-            week_id: Week ID for Vegas data lookup
-            weight: W8 weight
+            week_id: Week ID for Vegas data lookup (unused currently)
+            weight: W8 weight (unused currently)
 
         Returns:
-            FactorResult with calculated value
+            FactorResult with 0 value
         """
-        category = player.opponent_rank_category or "middle"
-
-        # Traditional rank-based values
-        category_values = {
-            "top_5": 1.0,
-            "middle": 0.0,
-            "bottom_5": -1.0,
-        }
-        rank_component = category_values.get(category, 0.0) * 0.7
-
-        # Spread-based strength component
-        spread_component = 0.0
-        try:
-            # Query opponent's spread (from their perspective)
-            spread_result = self.session.execute(
-                text("""
-                    SELECT AVG(spread) as avg_spread
-                    FROM sportsbook_odds
-                    WHERE week_id = :week_id
-                      AND team = :opponent
-                      AND spread IS NOT NULL
-                """),
-                {"week_id": week_id, "opponent": player.team},  # Opponent's spread
-            ).fetchone()
-
-            if spread_result and spread_result.avg_spread is not None:
-                opp_spread = spread_result.avg_spread
-
-                # Positive spread = opponent is underdog = weaker
-                # Negative spread = opponent is favorite = stronger
-                if opp_spread < -7:
-                    spread_component = 1.0 * 0.3  # Opponent strong favorite
-                elif opp_spread < -3:
-                    spread_component = 0.5 * 0.3  # Opponent slight favorite
-                elif opp_spread < 3:
-                    spread_component = 0.0 * 0.3  # Roughly even
-                elif opp_spread < 7:
-                    spread_component = -0.5 * 0.3  # Opponent slight underdog
-                else:
-                    spread_component = -1.0 * 0.3  # Opponent big underdog
-
-        except Exception as e:
-            logger.debug(f"Error querying spread for {player.team}: {e}")
-            self.session.rollback()
-            spread_component = 0.0
-
-        # Combine components
-        combined_value = rank_component + spread_component
-        value = combined_value * weight
-
-        used_default = player.opponent_rank_category is None
-
-        breakdown_info = f"Rank:{category} Spread:{opp_spread if spread_result and spread_result.avg_spread else 'N/A'}"
-
-        return FactorResult(value=value, used_default=used_default, breakdown_info=breakdown_info)
+        # DISABLED: Returns 0 regardless of weight
+        # The slider exists for future use when matchup data is properly configured
+        return FactorResult(
+            value=0.0,
+            used_default=False,
+            breakdown_info="Matchup Adjustment currently disabled"
+        )
 
     def categorize_opponent_rank(self, opp_rank: Optional[int]) -> str:
         """
