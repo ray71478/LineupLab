@@ -5,12 +5,13 @@
  * - Displays player name, team, position, salary, projection, ownership, Smart Score
  * - Shows projection source, 20+ snap games count, regression risk indicator
  * - Supports sorting and filtering
- * - Virtual scrolling for 150-200 players
+ * - Optimized with React.memo for performance
+ * - Virtual scrolling ready (can be enhanced with @tanstack/react-virtual)
  *
  * Design: Dark theme with Smart Score column highlighted
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -23,9 +24,13 @@ import {
   Typography,
   CircularProgress,
   Alert,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import type { PlayerScoreResponse } from '../../types/smartScore.types';
 import { ScoreDeltaIndicator } from './ScoreDeltaIndicator';
+import { RegressionRiskBadge } from './RegressionRiskBadge';
+import { MissingDataIndicator } from './MissingDataIndicator';
 
 export interface SmartScoreTableProps {
   players: PlayerScoreResponse[];
@@ -33,11 +38,75 @@ export interface SmartScoreTableProps {
   scoreDeltas?: Map<number, number>;
 }
 
-export const SmartScoreTable: React.FC<SmartScoreTableProps> = ({
+// Memoized table row component for performance
+const SmartScoreTableRow = React.memo<{
+  player: PlayerScoreResponse;
+  scoreDelta?: number;
+  showDelta: boolean;
+}>(({ player, scoreDelta, showDelta }) => (
+  <TableRow hover>
+    <TableCell>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        {player.name}
+        <MissingDataIndicator
+          missingDataIndicators={player.score_breakdown?.missing_data_indicators}
+        />
+      </Box>
+    </TableCell>
+    <TableCell>{player.team}</TableCell>
+    <TableCell>{player.position}</TableCell>
+    <TableCell>
+      ${((player.salary || 0) / 100).toFixed(0)}
+    </TableCell>
+    <TableCell>{player.projection?.toFixed(2) || '-'}</TableCell>
+    <TableCell>
+      {player.ownership
+        ? `${(player.ownership * 100).toFixed(1)}%`
+        : '-'}
+    </TableCell>
+    <TableCell
+      sx={{
+        backgroundColor: 'rgba(255, 140, 66, 0.1)',
+        fontWeight: 600,
+        borderLeft: '2px solid #ff8c42',
+        borderRight: '2px solid #ff8c42',
+      }}
+    >
+      <ScoreDeltaIndicator
+        score={player.smart_score}
+        delta={scoreDelta}
+        showDelta={showDelta}
+      />
+    </TableCell>
+    <TableCell>{player.projection_source || '-'}</TableCell>
+    <TableCell>{player.games_with_20_plus_snaps || '-'}</TableCell>
+    <TableCell>
+      {player.regression_risk && player.position === 'WR' ? (
+        <RegressionRiskBadge
+          regressionRisk={player.regression_risk}
+          position={player.position}
+          hasHistoricalData={player.games_with_20_plus_snaps !== null && player.games_with_20_plus_snaps !== undefined}
+        />
+      ) : (
+        '-'
+      )}
+    </TableCell>
+  </TableRow>
+));
+
+SmartScoreTableRow.displayName = 'SmartScoreTableRow';
+
+export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
   players,
   isLoading = false,
   scoreDeltas = new Map(),
 }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
+  // Memoize showDelta flag
+  const showDelta = useMemo(() => scoreDeltas.size > 0, [scoreDeltas.size]);
+
   if (isLoading && players.length === 0) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
@@ -63,8 +132,8 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = ({
         overflow: 'hidden',
       }}
     >
-      <TableContainer>
-        <Table stickyHeader>
+      <TableContainer sx={{ maxHeight: { xs: '60vh', md: '70vh' }, overflowX: 'auto' }}>
+        <Table stickyHeader size={isMobile ? 'small' : 'medium'}>
           <TableHead>
             <TableRow>
               <TableCell sx={{ fontWeight: 600 }}>Player</TableCell>
@@ -90,62 +159,21 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = ({
           </TableHead>
           <TableBody>
             {players.map((player) => (
-              <TableRow key={player.player_id} hover>
-                <TableCell>{player.name}</TableCell>
-                <TableCell>{player.team}</TableCell>
-                <TableCell>{player.position}</TableCell>
-                <TableCell>
-                  ${((player.salary || 0) / 100).toFixed(0)}
-                </TableCell>
-                <TableCell>{player.projection?.toFixed(2) || '-'}</TableCell>
-                <TableCell>
-                  {player.ownership
-                    ? `${(player.ownership * 100).toFixed(1)}%`
-                    : '-'}
-                </TableCell>
-                <TableCell
-                  sx={{
-                    backgroundColor: 'rgba(255, 140, 66, 0.1)',
-                    fontWeight: 600,
-                    borderLeft: '2px solid #ff8c42',
-                    borderRight: '2px solid #ff8c42',
-                  }}
-                >
-                  <ScoreDeltaIndicator
-                    score={player.smart_score}
-                    delta={scoreDeltas.get(player.player_id)}
-                    showDelta={scoreDeltas.size > 0}
-                  />
-                </TableCell>
-                <TableCell>{player.projection_source || '-'}</TableCell>
-                <TableCell>{player.games_with_20_plus_snaps || '-'}</TableCell>
-                <TableCell>
-                  {player.regression_risk && player.position === 'WR' ? (
-                    <Box
-                      sx={{
-                        display: 'inline-block',
-                        px: 1,
-                        py: 0.5,
-                        backgroundColor: '#ff5722',
-                        borderRadius: 1,
-                        fontSize: '0.75rem',
-                        color: 'white',
-                      }}
-                    >
-                      Risk
-                    </Box>
-                  ) : (
-                    '-'
-                  )}
-                </TableCell>
-              </TableRow>
+              <SmartScoreTableRow
+                key={player.player_id}
+                player={player}
+                scoreDelta={scoreDeltas.get(player.player_id)}
+                showDelta={showDelta}
+              />
             ))}
           </TableBody>
         </Table>
       </TableContainer>
     </Paper>
   );
-};
+});
+
+SmartScoreTable.displayName = 'SmartScoreTable';
 
 export default SmartScoreTable;
 

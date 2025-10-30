@@ -34,6 +34,7 @@ class DataImporter:
         "Ceiling": "ceiling",
         "Floor": "floor",
         "ProjOwn": "ownership",
+        "OppRank": "opponent_rank",  # Add OppRank for categorization
     }
 
     DRAFTKINGS_COLUMNS = {
@@ -169,6 +170,7 @@ class DataImporter:
                     "Ceiling": "float",
                     "Floor": "float",
                     "ProjOwn": "float",
+                    "OppRank": "int",  # Opponent rank (1-32)
                 }
 
             elif source.lower() == "draftkings":
@@ -270,26 +272,44 @@ class DataImporter:
                 # Convert NaN to None
                 player = {k: (None if pd.isna(v) else v) for k, v in player.items()}
 
-                # For player pools: process salary
-                if source.lower() in ["linestar", "draftkings"]:
-                    # Ensure salary is an integer (store as-is from file)
-                    if player.get("salary") is not None:
-                        player["salary"] = int(player["salary"])
+            # For player pools: process salary
+            if source.lower() in ["linestar", "draftkings"]:
+                # Ensure salary is an integer (store as-is from file)
+                if player.get("salary") is not None:
+                    player["salary"] = int(player["salary"])
 
-                    # Generate player_key for player pools
-                    player["player_key"] = self.matcher.generate_player_key(
-                        player["name"], player["team"], player["position"]
-                    )
+                # Generate player_key for player pools
+                player["player_key"] = self.matcher.generate_player_key(
+                    player["name"], player["team"], player["position"]
+                )
 
-                    # Validate business rules
-                    self.validator.validate_player_data(player)
+                # Categorize opponent rank (LineStar only)
+                if source.lower() == "linestar":
+                    opp_rank = player.get("opponent_rank")
+                    player["opponent_rank_category"] = self._categorize_opponent_rank(opp_rank)
+                else:
+                    player["opponent_rank_category"] = None
 
-                # For historical stats: generate player_key differently
-                elif source.lower() == "comprehensive_stats":
-                    # Use original name (not normalized) for historical stats
-                    player["player_key"] = self.matcher.generate_player_key(
-                        player["player_name"], player["team"], player["position"]
-                    )
+                # Set projection_source based on source
+                # For DraftKings, we'll default to LineStar unless ETR is specified
+                # ETR can be specified via a parameter, but for now default to source name
+                if source.lower() == "linestar":
+                    player["projection_source"] = "LineStar"
+                elif source.lower() == "draftkings":
+                    # Default to LineStar for DraftKings imports (can be overridden to ETR)
+                    player["projection_source"] = "LineStar"
+                else:
+                    player["projection_source"] = None
+
+                # Validate business rules
+                self.validator.validate_player_data(player)
+
+            # For historical stats: generate player_key differently
+            elif source.lower() == "comprehensive_stats":
+                # Use original name (not normalized) for historical stats
+                player["player_key"] = self.matcher.generate_player_key(
+                    player["player_name"], player["team"], player["position"]
+                )
 
                 players.append(player)
 
@@ -365,6 +385,8 @@ class DataImporter:
                     "floor": p.get("floor"),
                     "notes": p.get("notes"),
                     "source": source,
+                    "projection_source": p.get("projection_source"),
+                    "opponent_rank_category": p.get("opponent_rank_category"),
                 }
                 for p in players
             ]
@@ -373,8 +395,8 @@ class DataImporter:
             if insert_records:
                 stmt = text("""
                     INSERT INTO player_pools
-                    (week_id, player_key, name, team, position, salary, projection, ownership, ceiling, floor, notes, source)
-                    VALUES (:week_id, :player_key, :name, :team, :position, :salary, :projection, :ownership, :ceiling, :floor, :notes, :source)
+                    (week_id, player_key, name, team, position, salary, projection, ownership, ceiling, floor, notes, source, projection_source, opponent_rank_category)
+                    VALUES (:week_id, :player_key, :name, :team, :position, :salary, :projection, :ownership, :ceiling, :floor, :notes, :source, :projection_source, :opponent_rank_category)
                 """)
 
                 for record in insert_records:
@@ -441,3 +463,26 @@ class DataImporter:
 
         except Exception as e:
             raise DataImportError(f"Historical stats bulk insert failed: {str(e)}")
+
+    def _categorize_opponent_rank(self, opp_rank: Optional[int]) -> str:
+        """
+        Categorize opponent defensive rank into top_5, middle, bottom_5.
+
+        Args:
+            opp_rank: Opponent rank (1-32, where 1 is best defense)
+
+        Returns:
+            Category string: "top_5", "middle", or "bottom_5"
+        """
+        if opp_rank is None:
+            return "middle"
+
+        # Rank 1-5 = top_5 (best defenses)
+        if opp_rank <= 5:
+            return "top_5"
+        # Rank 28-32 = bottom_5 (worst defenses)
+        elif opp_rank >= 28:
+            return "bottom_5"
+        # Everything else is middle
+        else:
+            return "middle"
