@@ -138,6 +138,39 @@ async def list_weight_profiles(
         )
 
 
+@router.get("/profiles/default", response_model=WeightProfileResponse)
+async def get_default_weight_profile(
+    db: Any = Depends(_get_current_db_dependency),
+) -> WeightProfileResponse:
+    """
+    Get the default weight profile.
+
+    Args:
+        db: Database session
+
+    Returns:
+        WeightProfileResponse: Default profile
+
+    Raises:
+        HTTPException: 404 if no default profile exists
+    """
+    try:
+        service = WeightProfileService(db)
+        return service.get_default_profile()
+
+    except ProfileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No default weight profile found",
+        )
+    except Exception as e:
+        logger.error(f"Error getting default weight profile: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get default weight profile: {str(e)}",
+        )
+
+
 @router.get("/profiles/{profile_id}", response_model=WeightProfileResponse)
 async def get_weight_profile(
     profile_id: int,
@@ -295,38 +328,5 @@ async def delete_weight_profile(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete weight profile: {str(e)}",
-        )
-
-
-@router.get("/profiles/default", response_model=WeightProfileResponse)
-async def get_default_weight_profile(
-    db: Any = Depends(_get_current_db_dependency),
-) -> WeightProfileResponse:
-    """
-    Get the default weight profile.
-
-    Args:
-        db: Database session
-
-    Returns:
-        WeightProfileResponse: Default profile
-
-    Raises:
-        HTTPException: 404 if no default profile exists
-    """
-    try:
-        service = WeightProfileService(db)
-        return service.get_default_profile()
-
-    except ProfileNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No default weight profile found",
-        )
-    except Exception as e:
-        logger.error(f"Error getting default weight profile: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get default weight profile: {str(e)}",
         )
 
