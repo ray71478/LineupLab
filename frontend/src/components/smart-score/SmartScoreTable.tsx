@@ -240,6 +240,40 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         },
       },
       {
+        id: 'implied_team_total',
+        accessorKey: 'implied_team_total',
+        header: 'ITT',
+        size: 60,
+        cell: ({ getValue }) => {
+          const itt = getValue() as number | null | undefined;
+          if (itt === null || itt === undefined) {
+            return <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>-</Typography>;
+          }
+          return (
+            <Typography variant="body2" sx={{ fontSize: '0.75rem', fontWeight: 500 }}>
+              {itt.toFixed(2)}
+            </Typography>
+          );
+        },
+      },
+      {
+        id: 'over_under',
+        accessorKey: 'over_under',
+        header: 'O/U',
+        size: 60,
+        cell: ({ getValue }) => {
+          const ou = getValue() as number | null | undefined;
+          if (ou === null || ou === undefined) {
+            return <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>-</Typography>;
+          }
+          return (
+            <Typography variant="body2" sx={{ fontSize: '0.75rem', fontWeight: 500 }}>
+              {ou.toFixed(1)}
+            </Typography>
+          );
+        },
+      },
+      {
         id: 'consistency_score',
         accessorKey: 'consistency_score',
         header: 'Consistency',

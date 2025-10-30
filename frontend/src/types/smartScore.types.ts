@@ -57,6 +57,9 @@ export interface PlayerScoreResponse {
   games_with_20_plus_snaps?: number | null;
   regression_risk: boolean;
   score_breakdown?: ScoreBreakdown | null;
+  // Vegas context data
+  implied_team_total?: number | null;
+  over_under?: number | null;
   // Historical insights
   consistency_score?: number | null;
   opponent_matchup_avg?: number | null;
