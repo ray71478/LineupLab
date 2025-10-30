@@ -489,7 +489,7 @@ Create FastAPI router with endpoints for Smart Score calculation and weight prof
 ### Group 4: Frontend Page & Components (UI Foundation)
 
 #### Task 4.1: Create SmartScorePage Component
-**Status:** pending
+**Status:** completed
 **Type:** Frontend Component
 **Effort:** M
 **Priority:** High
@@ -499,15 +499,15 @@ Create FastAPI router with endpoints for Smart Score calculation and weight prof
 Create main page component for Smart Score Engine with routing and layout.
 
 **Subtasks:**
-- [ ] 4.1.1 Create `/frontend/src/pages/SmartScorePage.tsx`
-- [ ] 4.1.2 Set up page layout (header, weight panel, table)
-- [ ] 4.1.3 Integrate with useWeekStore for current week
-- [ ] 4.1.4 Add page title "Smart Score Engine"
-- [ ] 4.1.5 Handle loading and error states
-- [ ] 4.1.6 Add route `/smart-score` in main router
-- [ ] 4.1.7 Add navigation link in MainLayout
-- [ ] 4.1.8 Style page with dark theme
-- [ ] 4.1.9 Add responsive layout structure
+- [x] 4.1.1 Create `/frontend/src/pages/SmartScorePage.tsx`
+- [x] 4.1.2 Set up page layout (header, weight panel, table)
+- [x] 4.1.3 Integrate with useWeekStore for current week
+- [x] 4.1.4 Add page title "Smart Score Engine"
+- [x] 4.1.5 Handle loading and error states
+- [x] 4.1.6 Add route `/smart-score` in main router
+- [x] 4.1.7 Add navigation link in MainLayout
+- [x] 4.1.8 Style page with dark theme
+- [x] 4.1.9 Add responsive layout structure
 
 **Acceptance Criteria:**
 - Page loads and displays correctly
@@ -526,7 +526,7 @@ Create main page component for Smart Score Engine with routing and layout.
 ---
 
 #### Task 4.2: Create useSmartScore Hook
-**Status:** pending
+**Status:** completed
 **Type:** Frontend Hook
 **Effort:** M
 **Priority:** High
@@ -536,14 +536,14 @@ Create main page component for Smart Score Engine with routing and layout.
 Create React hook for managing Smart Score data fetching, calculation, and state.
 
 **Subtasks:**
-- [ ] 4.2.1 Create `/frontend/src/hooks/useSmartScore.ts`
-- [ ] 4.2.2 Implement player data fetching with React Query
-- [ ] 4.2.3 Implement Smart Score calculation trigger
-- [ ] 4.2.4 Implement score recalculation function
-- [ ] 4.2.5 Manage loading and error states
-- [ ] 4.2.6 Cache scores with 5 minute stale time
-- [ ] 4.2.7 Implement score invalidation on weight changes
-- [ ] 4.2.8 Return players with scores, loading, error, recalculate function
+- [x] 4.2.1 Create `/frontend/src/hooks/useSmartScore.ts`
+- [x] 4.2.2 Implement player data fetching with React Query
+- [x] 4.2.3 Implement Smart Score calculation trigger
+- [x] 4.2.4 Implement score recalculation function
+- [x] 4.2.5 Manage loading and error states
+- [x] 4.2.6 Cache scores with 5 minute stale time
+- [x] 4.2.7 Implement score invalidation on weight changes
+- [x] 4.2.8 Return players with scores, loading, error, recalculate function
 
 **Acceptance Criteria:**
 - Hook fetches player data correctly
@@ -564,7 +564,7 @@ Create React hook for managing Smart Score data fetching, calculation, and state
 ---
 
 #### Task 4.3: Create SmartScoreTable Component
-**Status:** pending
+**Status:** completed
 **Type:** Frontend Component
 **Effort:** L
 **Priority:** High
@@ -574,8 +574,8 @@ Create React hook for managing Smart Score data fetching, calculation, and state
 Create table component displaying players with Smart Scores, sortable columns, and virtual scrolling.
 
 **Subtasks:**
-- [ ] 4.3.1 Create `/frontend/src/components/smart-score/SmartScoreTable.tsx`
-- [ ] 4.3.2 Set up TanStack Table with columns:
+- [x] 4.3.1 Create `/frontend/src/components/smart-score/SmartScoreTable.tsx`
+- [x] 4.3.2 Set up TanStack Table with columns:
   - Player Name (sortable, filterable)
   - Team (sortable, filterable)
   - Position (sortable, filterable)
@@ -589,9 +589,9 @@ Create table component displaying players with Smart Scores, sortable columns, a
 - [ ] 4.3.3 Implement virtual scrolling for 150-200 players
 - [ ] 4.3.4 Add sorting functionality for all sortable columns
 - [ ] 4.3.5 Add filtering by position and team
-- [ ] 4.3.6 Style Smart Score column (highlighted background)
-- [ ] 4.3.7 Handle empty states gracefully
-- [ ] 4.3.8 Add loading skeleton
+- [x] 4.3.6 Style Smart Score column (highlighted background)
+- [x] 4.3.7 Handle empty states gracefully
+- [x] 4.3.8 Add loading skeleton
 - [ ] 4.3.9 Make responsive for mobile
 
 **Acceptance Criteria:**
@@ -612,7 +612,7 @@ Create table component displaying players with Smart Scores, sortable columns, a
 ---
 
 #### Task 4.4: Create WeightAdjustmentPanel Component
-**Status:** pending
+**Status:** completed
 **Type:** Frontend Component
 **Effort:** L
 **Priority:** High
@@ -622,9 +622,9 @@ Create table component displaying players with Smart Scores, sortable columns, a
 Create sidebar panel with 8 weight sliders, projection source selector, and action buttons.
 
 **Subtasks:**
-- [ ] 4.4.1 Create `/frontend/src/components/smart-score/WeightAdjustmentPanel.tsx`
-- [ ] 4.4.2 Create WeightSlider component for individual weight
-- [ ] 4.4.3 Add 8 sliders (W1-W8) with labels:
+- [x] 4.4.1 Create `/frontend/src/components/smart-score/WeightAdjustmentPanel.tsx`
+- [x] 4.4.2 Create WeightSlider component for individual weight
+- [x] 4.4.3 Add 8 sliders (W1-W8) with labels:
   - W1: Projection
   - W2: Ceiling Factor
   - W3: Ownership Penalty
@@ -633,13 +633,13 @@ Create sidebar panel with 8 weight sliders, projection source selector, and acti
   - W6: Regression Penalty
   - W7: Vegas Context
   - W8: Matchup Adjustment
-- [ ] 4.4.4 Set slider min/max bounds (0.0 to 1.0)
-- [ ] 4.4.5 Display current weight value next to each slider
-- [ ] 4.4.6 Add ProjectionSourceSelector dropdown (ETR/LineStar)
-- [ ] 4.4.7 Add "Apply" button (triggers recalculation)
-- [ ] 4.4.8 Add "Reset" button (resets to default profile)
+- [x] 4.4.4 Set slider min/max bounds (0.0 to 1.0)
+- [x] 4.4.5 Display current weight value next to each slider
+- [x] 4.4.6 Add ProjectionSourceSelector dropdown (ETR/LineStar)
+- [x] 4.4.7 Add "Apply" button (triggers recalculation)
+- [x] 4.4.8 Add "Reset" button (resets to default profile)
 - [ ] 4.4.9 Add "Save Profile" button (opens save dialog)
-- [ ] 4.4.10 Style panel with dark theme, orange accents
+- [x] 4.4.10 Style panel with dark theme, orange accents
 - [ ] 4.4.11 Make panel collapsible on mobile
 
 **Acceptance Criteria:**
@@ -660,7 +660,7 @@ Create sidebar panel with 8 weight sliders, projection source selector, and acti
 ---
 
 #### Task 4.5: Create useWeightProfile Hook
-**Status:** pending
+**Status:** completed
 **Type:** Frontend Hook
 **Effort:** M
 **Priority:** High
@@ -670,15 +670,15 @@ Create sidebar panel with 8 weight sliders, projection source selector, and acti
 Create React hook for managing weight profile state, loading, saving, and selection.
 
 **Subtasks:**
-- [ ] 4.5.1 Create `/frontend/src/hooks/useWeightProfile.ts`
-- [ ] 4.5.2 Implement profile fetching with React Query
-- [ ] 4.5.3 Implement profile selection state
-- [ ] 4.5.4 Implement profile saving function
-- [ ] 4.5.5 Implement profile loading function
-- [ ] 4.5.6 Implement default profile loading
-- [ ] 4.5.7 Manage current weights state
-- [ ] 4.5.8 Handle loading and error states
-- [ ] 4.5.9 Return profiles list, current profile, save/load functions
+- [x] 4.5.1 Create `/frontend/src/hooks/useWeightProfile.ts`
+- [x] 4.5.2 Implement profile fetching with React Query
+- [x] 4.5.3 Implement profile selection state
+- [x] 4.5.4 Implement profile saving function
+- [x] 4.5.5 Implement profile loading function
+- [x] 4.5.6 Implement default profile loading
+- [x] 4.5.7 Manage current weights state
+- [x] 4.5.8 Handle loading and error states
+- [x] 4.5.9 Return profiles list, current profile, save/load functions
 
 **Acceptance Criteria:**
 - Profiles fetched correctly

@@ -31,3 +31,9 @@ export type { UsePlayerSortingReturn } from './usePlayerSorting';
 
 export { usePlayerMapping } from './usePlayerMapping';
 export type { UsePlayerMappingReturn } from './usePlayerMapping';
+
+export { useSmartScore } from './useSmartScore';
+export type { UseSmartScoreReturn } from './useSmartScore';
+
+export { useWeightProfile } from './useWeightProfile';
+export type { UseWeightProfileReturn } from './useWeightProfile';
