@@ -112,8 +112,7 @@ async def import_linestar(
         validate_week_number(week_id)
         validate_file_extension(file.filename)
 
-        # Resolve week_id (week number) to actual database week ID
-        # Get the most recent season with this week number
+        # Find the week in any season (prefer most recent season)
         week_result = db.execute(
             text("""
                 SELECT id, season FROM weeks
