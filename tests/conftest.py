@@ -74,9 +74,24 @@ def db_engine():
                     ceiling FLOAT,
                     floor FLOAT,
                     source VARCHAR(50) NOT NULL,
+                    projection_source VARCHAR(50),
+                    opponent_rank_category VARCHAR(20),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(week_id, player_key)
+                )
+            """))
+            
+            # Create weight_profiles table
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS weight_profiles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(255) NOT NULL UNIQUE,
+                    weights TEXT NOT NULL,
+                    config TEXT NOT NULL,
+                    is_default BOOLEAN DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """))
 
@@ -242,6 +257,7 @@ def db_engine():
                 "week_status_overrides",
                 "week_metadata",
                 "nfl_schedule",
+                "weight_profiles",
                 "unmatched_players",
                 "player_pool_history",
                 "import_history",

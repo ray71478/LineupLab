@@ -21,8 +21,11 @@ Smart Score Formula:
 """
 
 import logging
+import json
+import hashlib
 from typing import Optional, Dict, Tuple, List
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -85,6 +88,9 @@ class SmartScoreService:
         """
         self.session = session
         self._defaults_cache: Dict[int, Dict[str, float]] = {}
+        # Cache for calculation results: (cache_key, (results, timestamp))
+        self._calculation_cache: Dict[str, Tuple[List[PlayerScoreResponse], datetime]] = {}
+        self._cache_ttl = timedelta(minutes=5)  # 5 minute TTL
 
     def calculate_smart_score(
         self,
@@ -676,6 +682,29 @@ class SmartScoreService:
         self._defaults_cache[week_id] = defaults
         return defaults
 
+    def _generate_cache_key(
+        self, week_id: int, weights: WeightProfile, config: ScoreConfig
+    ) -> str:
+        """
+        Generate cache key for calculation results.
+
+        Args:
+            week_id: Week ID
+            weights: Weight profile
+            config: Score configuration
+
+        Returns:
+            Cache key string
+        """
+        # Create deterministic hash from inputs
+        cache_data = {
+            "week_id": week_id,
+            "weights": weights.dict(),
+            "config": config.dict(),
+        }
+        cache_str = json.dumps(cache_data, sort_keys=True)
+        return hashlib.md5(cache_str.encode()).hexdigest()
+
     def calculate_for_all_players(
         self,
         week_id: int,
@@ -685,6 +714,8 @@ class SmartScoreService:
         """
         Calculate Smart Scores for all players in a week.
 
+        Uses caching to avoid redundant calculations for same week/weights/config.
+
         Args:
             week_id: Week ID to calculate scores for
             weights: Weight profile (W1-W8)
@@ -693,6 +724,19 @@ class SmartScoreService:
         Returns:
             List of PlayerScoreResponse with calculated scores
         """
+        # Check cache first
+        cache_key = self._generate_cache_key(week_id, weights, config)
+        if cache_key in self._calculation_cache:
+            cached_results, timestamp = self._calculation_cache[cache_key]
+            if datetime.now() - timestamp < self._cache_ttl:
+                logger.debug(f"Cache HIT for week {week_id}")
+                return cached_results
+            else:
+                # Cache expired, remove it
+                del self._calculation_cache[cache_key]
+
+        logger.debug(f"Cache MISS for week {week_id}, calculating...")
+
         # Fetch all players for the week
         players_query = text("""
             SELECT
@@ -759,5 +803,39 @@ class SmartScoreService:
 
             results.append(player_response)
 
+        # Cache results
+        self._calculation_cache[cache_key] = (results, datetime.now())
+        
+        # Clean up expired cache entries periodically
+        if len(self._calculation_cache) > 100:  # Limit cache size
+            self._cleanup_expired_cache()
+
         return results
+
+    def _cleanup_expired_cache(self):
+        """Remove expired cache entries."""
+        now = datetime.now()
+        expired_keys = [
+            key for key, (_, timestamp) in self._calculation_cache.items()
+            if now - timestamp >= self._cache_ttl
+        ]
+        for key in expired_keys:
+            del self._calculation_cache[key]
+        logger.debug(f"Cleaned up {len(expired_keys)} expired cache entries")
+
+    def invalidate_cache(self, week_id: Optional[int] = None):
+        """
+        Invalidate calculation cache.
+
+        Args:
+            week_id: If provided, invalidate only for this week. Otherwise, clear all cache.
+        """
+        if week_id is None:
+            self._calculation_cache.clear()
+            logger.info("Cleared all calculation cache")
+        else:
+            # Remove all cache entries for this week
+            # Simple approach: clear all cache (can be optimized later)
+            self._calculation_cache.clear()
+            logger.info(f"Cleared calculation cache for week {week_id}")
 

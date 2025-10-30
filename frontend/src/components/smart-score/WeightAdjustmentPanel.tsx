@@ -22,8 +22,15 @@ import {
   MenuItem,
   Slider,
   Divider,
+  Collapse,
+  IconButton,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import type { WeightProfile, ScoreConfig } from '../../types/smartScore.types';
+import { ProfileSelector } from './ProfileSelector';
 
 export interface WeightAdjustmentPanelProps {
   weights: WeightProfile;
@@ -56,6 +63,9 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
   onConfigChange,
   isCalculating = false,
 }) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [expanded, setExpanded] = React.useState(!isMobile);
   const [localWeights, setLocalWeights] = React.useState<WeightProfile>(weights);
   const [localConfig, setLocalConfig] = React.useState<ScoreConfig>(config);
 
@@ -67,6 +77,13 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
   React.useEffect(() => {
     setLocalConfig(config);
   }, [config]);
+
+  // Auto-expand on mobile when opened
+  React.useEffect(() => {
+    if (!isMobile) {
+      setExpanded(true);
+    }
+  }, [isMobile]);
 
   const handleWeightChange = (key: keyof WeightProfile, value: number) => {
     const updated = {
@@ -89,17 +106,51 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
   return (
     <Paper
       sx={{
-        p: 3,
+        p: { xs: 2, md: 3 },
         backgroundColor: '#1a1a2e',
         border: '1px solid rgba(255, 140, 66, 0.2)',
         borderRadius: 2,
       }}
     >
-      <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
-        Weight Adjustment
-      </Typography>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 2,
+        }}
+      >
+        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+          Weight Adjustment
+        </Typography>
+        {isMobile && (
+          <IconButton
+            onClick={() => setExpanded(!expanded)}
+            size="small"
+            sx={{
+              color: 'text.secondary',
+              '&:hover': {
+                backgroundColor: 'rgba(255, 140, 66, 0.1)',
+              },
+            }}
+          >
+            {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+          </IconButton>
+        )}
+      </Box>
 
-      {/* Projection Source Selector */}
+      <Collapse in={expanded}>
+        {/* Profile Selector */}
+        <Box sx={{ mb: 3 }}>
+          <ProfileSelector
+            currentWeights={localWeights}
+            currentConfig={localConfig}
+          />
+        </Box>
+
+        <Divider sx={{ mb: 3 }} />
+
+        {/* Projection Source Selector */}
       <FormControl fullWidth sx={{ mb: 3 }}>
         <InputLabel>Projection Source</InputLabel>
           <Select
@@ -164,6 +215,7 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
             '&:hover': {
               backgroundColor: '#e65a2b',
             },
+            minHeight: { xs: 44, md: 36 }, // Touch-friendly on mobile
           }}
         >
           {isCalculating ? 'Calculating...' : 'Apply'}
@@ -173,10 +225,14 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
           fullWidth
           onClick={onReset}
           disabled={isCalculating}
+          sx={{
+            minHeight: { xs: 44, md: 36 }, // Touch-friendly on mobile
+          }}
         >
           Reset to Default
         </Button>
       </Stack>
+      </Collapse>
     </Paper>
   );
 };

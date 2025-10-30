@@ -14,4 +14,11 @@ export type { SnapshotModalProps } from './SnapshotModal';
 export { ScoreDeltaIndicator } from './ScoreDeltaIndicator';
 export type { ScoreDeltaIndicatorProps } from './ScoreDeltaIndicator';
 
+export { RegressionRiskBadge } from './RegressionRiskBadge';
+export type { RegressionRiskBadgeProps } from './RegressionRiskBadge';
 
+export { ProfileSelector } from './ProfileSelector';
+export type { ProfileSelectorProps } from './ProfileSelector';
+
+export { MissingDataIndicator } from './MissingDataIndicator';
+export type { MissingDataIndicatorProps } from './MissingDataIndicator';

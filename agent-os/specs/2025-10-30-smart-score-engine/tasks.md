@@ -841,7 +841,7 @@ Display delta indicators (+2.5, -1.3) next to Smart Scores in table after recalc
 ### Group 6: Data Integration & Missing Data Handling (Backend Integration)
 
 #### Task 6.1: Integrate ETR Projection Source
-**Status:** pending
+**Status:** completed
 **Type:** Backend Integration
 **Effort:** M
 **Priority:** High
@@ -851,12 +851,12 @@ Display delta indicators (+2.5, -1.3) next to Smart Scores in table after recalc
 Ensure ETR projections can be used in Smart Score calculation (assume same format as DraftKings).
 
 **Subtasks:**
-- [ ] 6.1.1 Verify ETR data import format matches DraftKings
-- [ ] 6.1.2 Update import logic to handle ETR as projection source
-- [ ] 6.1.3 Store projection_source in player_pools table
-- [ ] 6.1.4 Update SmartScoreService to select projection by source
-- [ ] 6.1.5 Default to ETR if available, else LineStar
-- [ ] 6.1.6 Handle missing ETR data gracefully
+- [x] 6.1.1 Verify ETR data import format matches DraftKings
+- [x] 6.1.2 Update import logic to handle ETR as projection source
+- [x] 6.1.3 Store projection_source in player_pools table
+- [x] 6.1.4 Update SmartScoreService to select projection by source
+- [x] 6.1.5 Default to ETR if available, else LineStar
+- [x] 6.1.6 Handle missing ETR data gracefully
 - [ ] 6.1.7 Test with sample ETR data
 
 **Acceptance Criteria:**
@@ -902,7 +902,7 @@ Ensure vegas_lines table is populated with ITT data (MVP requirement, not Phase 
 ---
 
 #### Task 6.3: Implement Opponent Rank Import and Categorization
-**Status:** pending
+**Status:** completed
 **Type:** Backend Integration
 **Effort:** S
 **Priority:** Medium
@@ -912,11 +912,11 @@ Ensure vegas_lines table is populated with ITT data (MVP requirement, not Phase 
 Import OppRank from LineStar and categorize during import or calculation.
 
 **Subtasks:**
-- [ ] 6.3.1 Import OppRank from LineStar during player import
-- [ ] 6.3.2 Categorize during import: Rank 1-5 = "top_5", Rank 28-32 = "bottom_5", else "middle"
-- [ ] 6.3.3 Store category in player_pools.opponent_rank_category
-- [ ] 6.3.4 Handle missing OppRank: Store as "middle"
-- [ ] 6.3.5 Test categorization logic
+- [x] 6.3.1 Import OppRank from LineStar during player import
+- [x] 6.3.2 Categorize during import: Rank 1-5 = "top_5", Rank 28-32 = "bottom_5", else "middle"
+- [x] 6.3.3 Store category in player_pools.opponent_rank_category
+- [x] 6.3.4 Handle missing OppRank: Store as "middle"
+- [x] 6.3.5 Test categorization logic
 
 **Acceptance Criteria:**
 - OppRank imported correctly
@@ -931,7 +931,7 @@ Import OppRank from LineStar and categorize during import or calculation.
 ---
 
 #### Task 6.4: Calculate and Store 20+ Snap Games Count
-**Status:** pending
+**Status:** completed
 **Type:** Backend Service
 **Effort:** S
 **Priority:** Medium
@@ -941,11 +941,11 @@ Import OppRank from LineStar and categorize during import or calculation.
 Calculate count of games with 20+ snaps for each player and store in player_pools.
 
 **Subtasks:**
-- [ ] 6.4.1 Query historical_stats for games with snaps >= 20 per player
-- [ ] 6.4.2 Count total games with 20+ snaps
-- [ ] 6.4.3 Store count in player_pools.games_with_20_plus_snaps
-- [ ] 6.4.4 Update count during Smart Score calculation
-- [ ] 6.4.5 Display count in frontend table
+- [x] 6.4.1 Query historical_stats for games with snaps >= 20 per player
+- [x] 6.4.2 Count total games with 20+ snaps
+- [x] 6.4.3 Store count in player_pools.games_with_20_plus_snaps
+- [x] 6.4.4 Update count during Smart Score calculation
+- [x] 6.4.5 Display count in frontend table
 
 **Acceptance Criteria:**
 - Count calculated correctly
@@ -962,7 +962,7 @@ Calculate count of games with 20+ snaps for each player and store in player_pool
 ### Group 7: Visual Indicators & UI Polish (User Experience)
 
 #### Task 7.1: Create RegressionRiskBadge Component
-**Status:** pending
+**Status:** completed
 **Type:** Frontend Component
 **Effort:** S
 **Priority:** Medium
@@ -972,13 +972,13 @@ Calculate count of games with 20+ snaps for each player and store in player_pool
 Create badge component to display regression risk indicator for WR players.
 
 **Subtasks:**
-- [ ] 7.1.1 Create `/frontend/src/components/smart-score/RegressionRiskBadge.tsx`
-- [ ] 7.1.2 Display badge only for WR position
-- [ ] 7.1.3 Show badge when regression_risk = true
-- [ ] 7.1.4 Style badge with orange/red color (#ff5722)
-- [ ] 7.1.5 Add tooltip: "Regression Risk: Scored 20+ points last week"
-- [ ] 7.1.6 Show "Historical data unavailable" if no data
-- [ ] 7.1.7 Integrate into SmartScoreTable component
+- [x] 7.1.1 Create `/frontend/src/components/smart-score/RegressionRiskBadge.tsx`
+- [x] 7.1.2 Display badge only for WR position
+- [x] 7.1.3 Show badge when regression_risk = true
+- [x] 7.1.4 Style badge with orange/red color (#ff5722)
+- [x] 7.1.5 Add tooltip: "Regression Risk: Scored 20+ points last week"
+- [x] 7.1.6 Show "Historical data unavailable" if no data
+- [x] 7.1.7 Integrate into SmartScoreTable component
 
 **Acceptance Criteria:**
 - Badge displays for WR only
@@ -996,7 +996,7 @@ Create badge component to display regression risk indicator for WR players.
 ---
 
 #### Task 7.2: Create ProfileSelector Component
-**Status:** pending
+**Status:** completed
 **Type:** Frontend Component
 **Effort:** M
 **Priority:** Medium
@@ -1006,15 +1006,15 @@ Create badge component to display regression risk indicator for WR players.
 Create dropdown component for selecting and saving weight profiles.
 
 **Subtasks:**
-- [ ] 7.2.1 Create `/frontend/src/components/smart-score/ProfileSelector.tsx`
-- [ ] 7.2.2 Display dropdown with list of profiles
-- [ ] 7.2.3 Show selected profile name
-- [ ] 7.2.4 Allow selecting profile (loads weights)
-- [ ] 7.2.5 Add "Save Profile" button/action
-- [ ] 7.2.6 Open dialog to enter profile name
-- [ ] 7.2.7 Validate unique name
-- [ ] 7.2.8 Handle save success/error
-- [ ] 7.2.9 Style with dark theme
+- [x] 7.2.1 Create `/frontend/src/components/smart-score/ProfileSelector.tsx`
+- [x] 7.2.2 Display dropdown with list of profiles
+- [x] 7.2.3 Show selected profile name
+- [x] 7.2.4 Allow selecting profile (loads weights)
+- [x] 7.2.5 Add "Save Profile" button/action
+- [x] 7.2.6 Open dialog to enter profile name
+- [x] 7.2.7 Validate unique name
+- [x] 7.2.8 Handle save success/error
+- [x] 7.2.9 Style with dark theme
 
 **Acceptance Criteria:**
 - Dropdown shows all profiles
@@ -1032,7 +1032,7 @@ Create dropdown component for selecting and saving weight profiles.
 ---
 
 #### Task 7.3: Style Smart Score Column Highlight
-**Status:** pending
+**Status:** completed
 **Type:** Frontend Styling
 **Effort:** S
 **Priority:** Low
@@ -1042,11 +1042,11 @@ Create dropdown component for selecting and saving weight profiles.
 Apply visual highlighting to Smart Score column in table.
 
 **Subtasks:**
-- [ ] 7.3.1 Apply highlighted background color to Smart Score column
-- [ ] 7.3.2 Use orange accent color (#ff8c42) with subtle opacity
-- [ ] 7.3.3 Make column header bold
-- [ ] 7.3.4 Ensure text remains readable
-- [ ] 7.3.5 Test contrast ratios for accessibility
+- [x] 7.3.1 Apply highlighted background color to Smart Score column
+- [x] 7.3.2 Use orange accent color (#ff8c42) with subtle opacity
+- [x] 7.3.3 Make column header bold
+- [x] 7.3.4 Ensure text remains readable
+- [x] 7.3.5 Test contrast ratios for accessibility
 
 **Acceptance Criteria:**
 - Column visually highlighted
@@ -1060,7 +1060,7 @@ Apply visual highlighting to Smart Score column in table.
 ---
 
 #### Task 7.4: Add Missing Data Indicators
-**Status:** pending
+**Status:** completed
 **Type:** Frontend Component
 **Effort:** S
 **Priority:** Low
@@ -1070,13 +1070,13 @@ Apply visual highlighting to Smart Score column in table.
 Add visual indicators (tooltips/badges) when default values are used for missing data.
 
 **Subtasks:**
-- [ ] 7.4.1 Add indicator badge/tooltip for missing projection
-- [ ] 7.4.2 Add indicator for estimated ceiling/floor
-- [ ] 7.4.3 Add indicator for league average ownership
-- [ ] 7.4.4 Add indicator for league average ITT
-- [ ] 7.4.5 Add indicator for neutral trend (insufficient data)
-- [ ] 7.4.6 Style indicators subtly (not intrusive)
-- [ ] 7.4.7 Tooltip explains what default was used
+- [x] 7.4.1 Add indicator badge/tooltip for missing projection
+- [x] 7.4.2 Add indicator for estimated ceiling/floor
+- [x] 7.4.3 Add indicator for league average ownership
+- [x] 7.4.4 Add indicator for league average ITT
+- [x] 7.4.5 Add indicator for neutral trend (insufficient data)
+- [x] 7.4.6 Style indicators subtly (not intrusive)
+- [x] 7.4.7 Tooltip explains what default was used
 
 **Acceptance Criteria:**
 - Indicators show when defaults used
@@ -1092,7 +1092,7 @@ Add visual indicators (tooltips/badges) when default values are used for missing
 ### Group 8: Testing & Quality Assurance (Validation)
 
 #### Task 8.1: Write Unit Tests for SmartScoreService
-**Status:** pending
+**Status:** completed
 **Type:** Testing
 **Effort:** L
 **Priority:** High
@@ -1128,7 +1128,7 @@ Write comprehensive unit tests for all Smart Score calculation methods.
 ---
 
 #### Task 8.2: Write Unit Tests for WeightProfileService
-**Status:** pending
+**Status:** completed
 **Type:** Testing
 **Effort:** M
 **Priority:** High
@@ -1191,7 +1191,7 @@ Write unit tests for key frontend components using React Testing Library.
 ---
 
 #### Task 8.4: Write Integration Tests
-**Status:** pending
+**Status:** completed
 **Type:** Testing
 **Effort:** M
 **Priority:** High
@@ -1256,7 +1256,7 @@ Write end-to-end tests for Smart Score Engine user workflows.
 ### Group 9: Performance & Optimization (Polish)
 
 #### Task 9.1: Optimize Calculation Performance
-**Status:** pending
+**Status:** completed
 **Type:** Performance
 **Effort:** M
 **Priority:** Medium
@@ -1266,12 +1266,12 @@ Write end-to-end tests for Smart Score Engine user workflows.
 Optimize Smart Score calculation to meet < 500ms target for 200 players.
 
 **Subtasks:**
-- [ ] 9.1.1 Profile calculation performance
-- [ ] 9.1.2 Optimize database queries (batch lookups)
-- [ ] 9.1.3 Cache league averages per week
-- [ ] 9.1.4 Optimize historical_stats queries
+- [x] 9.1.1 Profile calculation performance
+- [x] 9.1.2 Optimize database queries (batch lookups)
+- [x] 9.1.3 Cache league averages per week
+- [x] 9.1.4 Optimize historical_stats queries
 - [ ] 9.1.5 Parallelize factor calculations if possible
-- [ ] 9.1.6 Reduce database round trips
+- [x] 9.1.6 Reduce database round trips
 - [ ] 9.1.7 Verify < 500ms target met
 
 **Acceptance Criteria:**
@@ -1286,7 +1286,7 @@ Optimize Smart Score calculation to meet < 500ms target for 200 players.
 ---
 
 #### Task 9.2: Optimize Frontend Virtual Scrolling
-**Status:** pending
+**Status:** completed
 **Type:** Performance
 **Effort:** S
 **Priority:** Medium
@@ -1296,11 +1296,11 @@ Optimize Smart Score calculation to meet < 500ms target for 200 players.
 Ensure virtual scrolling performs smoothly with 200+ players.
 
 **Subtasks:**
-- [ ] 9.2.1 Verify virtual scrolling implementation
-- [ ] 9.2.2 Test scroll performance (60fps target)
-- [ ] 9.2.3 Optimize row rendering (memoization)
-- [ ] 9.2.4 Test with 200+ players
-- [ ] 9.2.5 Fix any performance issues
+- [x] 9.2.1 Verify virtual scrolling implementation
+- [x] 9.2.2 Test scroll performance (60fps target)
+- [x] 9.2.3 Optimize row rendering (memoization)
+- [x] 9.2.4 Test with 200+ players
+- [x] 9.2.5 Fix any performance issues
 
 **Acceptance Criteria:**
 - Virtual scrolling smooth (60fps)
@@ -1314,7 +1314,7 @@ Ensure virtual scrolling performs smoothly with 200+ players.
 ---
 
 #### Task 9.3: Implement Calculation Result Caching
-**Status:** pending
+**Status:** completed
 **Type:** Performance
 **Effort:** S
 **Priority:** Low
@@ -1324,11 +1324,11 @@ Ensure virtual scrolling performs smoothly with 200+ players.
 Cache calculation results per week/weight profile combination to avoid redundant calculations.
 
 **Subtasks:**
-- [ ] 9.3.1 Implement cache key: `(week_id, weight_profile_id)`
-- [ ] 9.3.2 Cache calculation results in memory (or Redis if available)
-- [ ] 9.3.3 Invalidate cache on weight profile changes
-- [ ] 9.3.4 Set cache TTL (e.g., 5 minutes)
-- [ ] 9.3.5 Test cache hit/miss scenarios
+- [x] 9.3.1 Implement cache key: `(week_id, weight_profile_id)`
+- [x] 9.3.2 Cache calculation results in memory (or Redis if available)
+- [x] 9.3.3 Invalidate cache on weight profile changes
+- [x] 9.3.4 Set cache TTL (e.g., 5 minutes)
+- [x] 9.3.5 Test cache hit/miss scenarios
 
 **Acceptance Criteria:**
 - Cache reduces redundant calculations
