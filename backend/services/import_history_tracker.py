@@ -116,7 +116,7 @@ class ImportHistoryTracker:
             Exception: If snapshot creation fails
         """
         try:
-            from sqlalchemy import insert
+            from sqlalchemy import insert, text
 
             if not players:
                 logger.warning(f"No players to snapshot for import {import_id}")

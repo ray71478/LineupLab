@@ -48,6 +48,11 @@ def db_engine():
                     season INTEGER NOT NULL,
                     week_number INTEGER NOT NULL CHECK (week_number BETWEEN 1 AND 18),
                     status VARCHAR(20) DEFAULT 'upcoming' CHECK (status IN ('upcoming', 'active', 'completed')),
+                    nfl_slate_date DATE,
+                    status_override VARCHAR(20),
+                    metadata TEXT,
+                    is_locked BOOLEAN DEFAULT 0,
+                    locked_at TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(season, week_number)
@@ -174,6 +179,56 @@ def db_engine():
                 )
             """))
 
+            # Create week_metadata table (new for week management)
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS week_metadata (
+                    id INTEGER PRIMARY KEY,
+                    week_id INTEGER NOT NULL UNIQUE REFERENCES weeks(id) ON DELETE CASCADE,
+                    season INTEGER NOT NULL,
+                    week_number INTEGER NOT NULL CHECK (week_number BETWEEN 1 AND 18),
+                    nfl_slate_date DATE NOT NULL,
+                    kickoff_time TIME NOT NULL,
+                    slate_start_time TIMESTAMP,
+                    slate_end_time TIMESTAMP,
+                    espn_schedule_url TEXT,
+                    import_status VARCHAR(20) DEFAULT 'pending' CHECK (import_status IN ('pending', 'imported', 'error')),
+                    import_count INTEGER DEFAULT 0,
+                    import_timestamp TIMESTAMP,
+                    import_error_message TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(season, week_number)
+                )
+            """))
+
+            # Create nfl_schedule table (new for week management)
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS nfl_schedule (
+                    id INTEGER PRIMARY KEY,
+                    season INTEGER NOT NULL,
+                    week INTEGER NOT NULL CHECK (week BETWEEN 1 AND 18),
+                    slate_date DATE NOT NULL,
+                    kickoff_time TIME NOT NULL,
+                    game_count INTEGER,
+                    is_playoff BOOLEAN DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(season, week)
+                )
+            """))
+
+            # Create week_status_overrides table (new for week management)
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS week_status_overrides (
+                    id INTEGER PRIMARY KEY,
+                    week_id INTEGER NOT NULL UNIQUE REFERENCES weeks(id) ON DELETE CASCADE,
+                    override_status VARCHAR(20) NOT NULL CHECK (override_status IN ('active', 'upcoming', 'completed')),
+                    reason TEXT,
+                    overridden_by VARCHAR(255),
+                    overridden_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
             conn.commit()
     except Exception as e:
         print(f"Error creating tables: {e}")
@@ -184,6 +239,9 @@ def db_engine():
     try:
         with engine.begin() as conn:
             tables = [
+                "week_status_overrides",
+                "week_metadata",
+                "nfl_schedule",
                 "unmatched_players",
                 "player_pool_history",
                 "import_history",
@@ -202,12 +260,62 @@ def db_engine():
     engine.dispose()
 
 
+def seed_nfl_schedule(session: Session, year: int = 2025) -> None:
+    """Seed NFL schedule data for a year."""
+    # NFL schedule data for the season
+    schedule_data = []
+
+    # Base dates for 2025 (adjust for other years as needed)
+    if year == 2025:
+        base_dates = [
+            '2025-09-07', '2025-09-14', '2025-09-21', '2025-09-28',
+            '2025-10-05', '2025-10-12', '2025-10-19', '2025-10-26',
+            '2025-11-02', '2025-11-09', '2025-11-16', '2025-11-23',
+            '2025-11-30', '2025-12-07', '2025-12-14', '2025-12-21',
+            '2025-12-28', '2026-01-04',
+        ]
+    else:
+        # Generic 18 weeks for other years (Sunday dates)
+        from datetime import date, timedelta
+        # Find first Sunday of September
+        first_sept = date(year, 9, 1)
+        first_sunday = first_sept + timedelta(days=(6 - first_sept.weekday()))
+        base_dates = [(first_sunday + timedelta(weeks=i)).isoformat() for i in range(18)]
+
+    for week_num in range(1, 19):
+        kickoff_time = '12:30' if week_num == 12 else '13:00'  # Thanksgiving
+
+        try:
+            session.execute(
+                text("""
+                    INSERT INTO nfl_schedule (season, week, slate_date, kickoff_time, game_count, is_playoff)
+                    VALUES (:season, :week, :slate_date, :kickoff_time, :game_count, :is_playoff)
+                """),
+                {
+                    "season": year,
+                    "week": week_num,
+                    "slate_date": base_dates[week_num - 1],
+                    "kickoff_time": kickoff_time,
+                    "game_count": 16,
+                    "is_playoff": False,
+                }
+            )
+        except Exception:
+            pass  # Skip if already exists
+
+    session.commit()
+
+
 @pytest.fixture(scope="function")
 def db_session(db_engine):
     """Create test database session."""
     connection = db_engine.connect()
     transaction = connection.begin()
     session = sessionmaker(bind=connection, expire_on_commit=False)()
+
+    # Seed NFL schedule for 2025-2027
+    for year in [2025, 2026, 2027]:
+        seed_nfl_schedule(session, year)
 
     yield session
 
@@ -291,21 +399,21 @@ def create_draftkings_xlsx() -> BytesIO:
     headers = ["Name", "Pos", "T", "S", "Proj", "Ceil", "Flr", "Own", "Notes"]
     ws.append(headers)
 
-    # Generate 174 players
     positions = ["QB", "RB", "WR", "TE", "DST"]
-    teams = ["KC", "LAC", "PHI", "DAL", "CIN", "BAL", "BUF", "NYG", "NO", "TB", "CAR", "GB", "MIN", "SF", "LAR", "TEN", "LV", "MIA", "WAS", "DEN", "HOU", "IND", "SEA", "ARI"]
+    teams = ["KC", "LAC", "PHI", "DAL", "CIN", "BAL", "BUF", "NYG", "NO", "TB", "CAR", "GB", "MIN", "SF", "LAR", "TB", "TEN", "LV", "WAS", "DEN", "HOU", "IND"]
 
     for i in range(174):
         team = teams[i % len(teams)]
         position = positions[i % len(positions)]
-        name = f"DKPlayer{i+1}"
-        salary = 4500 + (i % 2500)
-        projection = 12.0 + (i % 5)
-        ceiling = projection + 2.5
-        floor = projection - 2.5
-        ownership = 0.03 + (i % 100) / 1000
+        name = f"Player{i+1}"
+        salary = 5000 + (i % 2000)
+        projection = 10.0 + (i % 5)
+        ceiling = projection + 2.0
+        floor = projection - 2.0
+        ownership = 0.05 + (i % 100) / 1000
+        notes = f"Note{i}"
 
-        ws.append([name, position, team, salary, projection, ceiling, floor, ownership, ""])
+        ws.append([name, position, team, salary, projection, ceiling, floor, ownership, notes])
 
     output = BytesIO()
     wb.save(output)
@@ -314,21 +422,17 @@ def create_draftkings_xlsx() -> BytesIO:
 
 
 def create_comprehensive_stats_xlsx() -> BytesIO:
-    """Create a sample Comprehensive Stats XLSX file with 2690 records."""
+    """Create a sample Comprehensive Stats XLSX file with 2690 rows."""
     wb = Workbook()
     ws = wb.active
     ws.title = "Points"
 
-    # Headers
     headers = [
-        "Player", "Tm", "Pos", "Wk", "Opp", "Snaps", "Snp %", "Ratt", "Rsh_yds",
-        "Rsh_td", "CTGT", "CTGT%", "Rec", "Rc_yds", "Rc_td", "Tot TD", "Touch",
-        "DK Pts", "Sal"
+        "Player", "Tm", "Pos", "Wk", "Opp", "Snaps", "Snp %", "Ratt", "Rsh_yds", "Rsh_td",
+        "CTGT", "CTGT%", "Rec", "Rc_yds", "Rc_td", "Tot TD", "Touch", "DK Pts", "Sal"
     ]
     ws.append(headers)
 
-    # Generate 2690 records
-    # Simple approach: create enough records
     positions = ["QB", "RB", "WR", "TE", "DST"]
     teams = ["KC", "LAC", "PHI", "DAL", "CIN", "BAL", "BUF", "NYG", "NO", "TB"]
 
@@ -430,3 +534,4 @@ def draftkings_sample() -> BytesIO:
 def comprehensive_stats_sample() -> BytesIO:
     """Fixture providing Comprehensive Stats sample file."""
     return create_comprehensive_stats_xlsx()
+

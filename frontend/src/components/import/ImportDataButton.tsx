@@ -248,12 +248,29 @@ export const ImportDataButton: React.FC<ImportDataButtonProps> = ({
       <Box sx={{ position: 'relative' }}>
         <Button
           variant="contained"
-          startIcon={isLoading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+          startIcon={isLoading ? <CircularProgress size={20} sx={{ color: '#ffffff' }} /> : <CloudUploadIcon />}
           onClick={handleButtonClick}
           disabled={isLoading}
           data-testid="import-data-button"
+          sx={{
+            px: 3,
+            py: 1,
+            fontSize: '0.95rem',
+            fontWeight: 500,
+            textTransform: 'none',
+            borderRadius: 2,
+            bgcolor: '#ff4500',
+            color: '#ffffff',
+            '&:hover': {
+              bgcolor: '#e03e00',
+            },
+            '&:disabled': {
+              bgcolor: 'rgba(255, 69, 0, 0.5)',
+              color: 'rgba(255, 255, 255, 0.7)',
+            }
+          }}
         >
-          {isLoading ? 'Uploading...' : 'Import Data'}
+          {isLoading ? 'Uploading...' : 'Upload Data'}
         </Button>
 
         <Menu

@@ -49,6 +49,9 @@ htmlcov/
 *.sqlite
 *.sqlite3
 
+# Docker PostgreSQL data directory (persist data between container restarts)
+data/
+
 # Node
 node_modules/
 npm-debug.log

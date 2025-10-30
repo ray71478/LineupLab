@@ -1,0 +1,207 @@
+/**
+ * Week Management Feature - Optimized CSS Animations
+ *
+ * Pure CSS animations for better performance:
+ * - No JavaScript animation loops
+ * - GPU-accelerated transforms
+ * - will-change hints for optimization
+ * - Timing aligned with spec (200ms, 150ms, 2s, 300ms)
+ */
+
+/* ==========================================
+   GLOW EFFECT - Active Week (2s continuous)
+   ========================================== */
+@keyframes weekGlow {
+  0% {
+    box-shadow: 0 0 4px rgba(76, 175, 80, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(76, 175, 80, 0.6);
+  }
+  100% {
+    box-shadow: 0 0 4px rgba(76, 175, 80, 0.3);
+  }
+}
+
+.week-glow-effect {
+  animation: weekGlow 2s ease-in-out infinite;
+  will-change: box-shadow;
+}
+
+/* ==========================================
+   DROPDOWN OPEN/CLOSE - 200ms ease-out
+   ========================================== */
+@keyframes dropdownOpen {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dropdown-open {
+  animation: dropdownOpen 200ms ease-out forwards;
+  will-change: opacity, transform;
+}
+
+/* ==========================================
+   STATUS BADGE FADE - 150ms ease-in-out
+   ========================================== */
+@keyframes badgeFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.badge-fade-in {
+  animation: badgeFade 150ms ease-in-out forwards;
+  will-change: opacity;
+}
+
+/* ==========================================
+   CAROUSEL SWIPE - 300ms cubic-bezier
+   ========================================== */
+@keyframes carouselSlide {
+  from {
+    transform: translateX(var(--from-offset, 0));
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.carousel-slide {
+  animation: carouselSlide 300ms cubic-bezier(0.33, 0.66, 0.66, 1) forwards;
+  will-change: transform;
+}
+
+/* ==========================================
+   SCALE EFFECT - Hover interaction (150ms)
+   ========================================== */
+@keyframes scaleUp {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.1);
+  }
+}
+
+.scale-hover {
+  transition: transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.scale-hover:hover {
+  animation: scaleUp 150ms ease-in-out forwards;
+}
+
+/* ==========================================
+   SKELETON PULSE - Loading state
+   ========================================== */
+@keyframes skeletonPulse {
+  0% {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+  50% {
+    background-color: rgba(255, 255, 255, 0.2);
+  }
+  100% {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+.skeleton-pulse {
+  animation: skeletonPulse 1.5s ease-in-out infinite;
+  will-change: background-color;
+}
+
+/* ==========================================
+   SPIN LOADER - API call indicator
+   ========================================== */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner-rotate {
+  animation: spin 1s linear infinite;
+  will-change: transform;
+}
+
+/* ==========================================
+   TOAST SLIDE-IN - Notification animations
+   ========================================== */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.toast-slide-in {
+  animation: slideInUp 300ms ease-out forwards;
+  will-change: opacity, transform;
+}
+
+/* ==========================================
+   Reduced Motion Support (WCAG A11y)
+   ========================================== */
+@media (prefers-reduced-motion: reduce) {
+  .week-glow-effect,
+  .dropdown-open,
+  .badge-fade-in,
+  .carousel-slide,
+  .scale-hover,
+  .skeleton-pulse,
+  .spinner-rotate,
+  .toast-slide-in {
+    animation: none;
+    will-change: auto;
+    transition: none;
+  }
+
+  .scale-hover:hover {
+    transform: none;
+  }
+}
+
+/* ==========================================
+   PERFORMANCE: Ensure GPU acceleration
+   ========================================== */
+.gpu-accelerated {
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* ==========================================
+   DISABLE TEXT SELECTION - During interactions
+   ========================================== */
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* ==========================================
+   SMOOTH SCROLLING
+   ========================================== */
+.smooth-scroll {
+  scroll-behavior: smooth;
+}
