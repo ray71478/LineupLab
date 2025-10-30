@@ -3,7 +3,7 @@ Pydantic schemas for Smart Score Engine API.
 
 Defines request and response models for Smart Score calculation and weight profile management.
 """
-from typing import Optional, Literal, Dict, Any
+from typing import Optional, Literal, Dict, Any, List
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -96,6 +96,15 @@ class PlayerScoreResponse(BaseModel):
     games_with_20_plus_snaps: Optional[int] = Field(None, description="Games with 20+ snaps")
     regression_risk: bool = Field(default=False, description="Regression risk flag (WR only)")
     score_breakdown: Optional[ScoreBreakdown] = Field(None, description="Detailed score breakdown")
+    
+    # Historical insights
+    consistency_score: Optional[float] = Field(None, description="Consistency score (CV, lower is more consistent)")
+    opponent_matchup_avg: Optional[float] = Field(None, description="Average points vs this week's opponent")
+    salary_efficiency_trend: Optional[str] = Field(None, description="Salary efficiency trend: 'up', 'down', or 'stable'")
+    usage_warnings: Optional[List[str]] = Field(None, description="Usage pattern warnings (declining snaps/touches)")
+    
+    # Stack correlation metadata (not affecting Smart Score)
+    stack_partners: Optional[List[Dict[str, Any]]] = Field(None, description="Top stack correlation partners (e.g., QB-WR pairs with correlation > 0.5)")
     
     class Config:
         from_attributes = True

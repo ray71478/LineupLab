@@ -46,6 +46,8 @@ import type { PlayerScoreResponse } from '../../types/smartScore.types';
 import { ScoreDeltaIndicator } from './ScoreDeltaIndicator';
 import { RegressionRiskBadge } from './RegressionRiskBadge';
 import { MissingDataIndicator } from './MissingDataIndicator';
+import { UsageWarningBadge } from './UsageWarningBadge';
+import { StackPotentialBadge } from './StackPotentialBadge';
 
 export interface SmartScoreTableProps {
   players: PlayerScoreResponse[];
@@ -64,6 +66,8 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
     { id: 'smart_score', desc: true }, // Default sort by Smart Score descending
   ]);
   const [positionFilter, setPositionFilter] = useState<string>('all');
+  const [consistencyFilter, setConsistencyFilter] = useState<string>('all'); // 'all', 'low', 'medium', 'high'
+  const [valueTrendFilter, setValueTrendFilter] = useState<string>('all'); // 'all', 'up', 'down', 'stable'
 
   // Memoize showDelta flag
   const showDelta = useMemo(() => scoreDeltas.size > 0, [scoreDeltas.size]);
@@ -76,9 +80,32 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
 
   // Filter players by position
   const filteredPlayers = useMemo(() => {
-    if (positionFilter === 'all') return players;
-    return players.filter(p => p.position === positionFilter);
-  }, [players, positionFilter]);
+    let filtered = players;
+    
+    // Position filter
+    if (positionFilter !== 'all') {
+      filtered = filtered.filter(p => p.position === positionFilter);
+    }
+    
+    // Consistency filter
+    if (consistencyFilter !== 'all') {
+      filtered = filtered.filter(p => {
+        if (p.consistency_score === null || p.consistency_score === undefined) return false;
+        const cv = p.consistency_score;
+        if (consistencyFilter === 'low') return cv < 0.3; // Very consistent
+        if (consistencyFilter === 'medium') return cv >= 0.3 && cv < 0.6;
+        if (consistencyFilter === 'high') return cv >= 0.6; // Volatile
+        return true;
+      });
+    }
+    
+    // Value trend filter
+    if (valueTrendFilter !== 'all') {
+      filtered = filtered.filter(p => p.salary_efficiency_trend === valueTrendFilter);
+    }
+    
+    return filtered;
+  }, [players, positionFilter, consistencyFilter, valueTrendFilter]);
 
   // Column definitions
   const columns = useMemo<ColumnDef<PlayerScoreResponse>[]>(
@@ -126,6 +153,25 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
             }}
           />
         ),
+      },
+      {
+        id: 'stack_potential',
+        accessorKey: 'stack_partners',
+        header: 'Stack',
+        size: 80,
+        cell: ({ row }) => {
+          const player = row.original;
+          // Only show for QB, WR, TE
+          if (!['QB', 'WR', 'TE'].includes(player.position)) {
+            return null;
+          }
+          return (
+            <StackPotentialBadge
+              stackPartners={player.stack_partners}
+              position={player.position}
+            />
+          );
+        },
       },
       {
         id: 'salary',
@@ -190,6 +236,108 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
               delta={scoreDelta}
               showDelta={showDelta}
             />
+          );
+        },
+      },
+      {
+        id: 'consistency_score',
+        accessorKey: 'consistency_score',
+        header: 'Consistency',
+        size: 90,
+        cell: ({ getValue, row }) => {
+          const cv = getValue() as number | null | undefined;
+          const player = row.original;
+          if (cv === null || cv === undefined) {
+            return <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>-</Typography>;
+          }
+          // Lower CV = more consistent (better)
+          // Color code: < 0.3 = green, 0.3-0.6 = yellow, > 0.6 = red
+          const getColor = () => {
+            if (cv < 0.3) return '#4caf50'; // Green
+            if (cv < 0.6) return '#ff9800'; // Orange
+            return '#f44336'; // Red
+          };
+          return (
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                fontSize: '0.875rem',
+                color: getColor(),
+                fontWeight: cv < 0.3 ? 600 : 400,
+              }}
+            >
+              {cv.toFixed(2)}
+            </Typography>
+          );
+        },
+      },
+      {
+        id: 'opponent_matchup_avg',
+        accessorKey: 'opponent_matchup_avg',
+        header: 'vs Opp',
+        size: 70,
+        cell: ({ getValue }) => {
+          const avg = getValue() as number | null | undefined;
+          if (avg === null || avg === undefined) {
+            return <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>-</Typography>;
+          }
+          return (
+            <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+              {avg.toFixed(1)}
+            </Typography>
+          );
+        },
+      },
+      {
+        id: 'salary_efficiency_trend',
+        accessorKey: 'salary_efficiency_trend',
+        header: 'Value Trend',
+        size: 80,
+        cell: ({ getValue }) => {
+          const trend = getValue() as 'up' | 'down' | 'stable' | null | undefined;
+          if (!trend) {
+            return <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>-</Typography>;
+          }
+          const getIcon = () => {
+            if (trend === 'up') return '▲';
+            if (trend === 'down') return '▼';
+            return '→';
+          };
+          const getColor = () => {
+            if (trend === 'up') return '#4caf50';
+            if (trend === 'down') return '#f44336';
+            return '#999';
+          };
+          return (
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                fontSize: '0.875rem',
+                color: getColor(),
+                fontWeight: 600,
+              }}
+            >
+              {getIcon()}
+            </Typography>
+          );
+        },
+      },
+      {
+        id: 'usage_warnings',
+        accessorFn: (row) => row.usage_warnings,
+        header: 'Usage',
+        size: 70,
+        cell: ({ row }) => {
+          const player = row.original;
+          return (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <UsageWarningBadge warnings={player.usage_warnings} />
+              {!player.usage_warnings && (
+                <Typography variant="body2" sx={{ fontSize: '0.875rem', color: 'text.secondary' }}>
+                  -
+                </Typography>
+              )}
+            </Box>
           );
         },
       },
@@ -305,6 +453,37 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
             ))}
           </Select>
         </FormControl>
+        
+        <FormControl size="small" sx={{ minWidth: 140 }}>
+          <InputLabel sx={{ fontSize: '0.875rem' }}>Consistency</InputLabel>
+          <Select
+            value={consistencyFilter}
+            label="Consistency"
+            onChange={(e) => setConsistencyFilter(e.target.value)}
+            sx={{ fontSize: '0.875rem', height: 32 }}
+          >
+            <MenuItem value="all">All</MenuItem>
+            <MenuItem value="low">Low CV (&lt;0.3)</MenuItem>
+            <MenuItem value="medium">Medium (0.3-0.6)</MenuItem>
+            <MenuItem value="high">High CV (&gt;0.6)</MenuItem>
+          </Select>
+        </FormControl>
+        
+        <FormControl size="small" sx={{ minWidth: 130 }}>
+          <InputLabel sx={{ fontSize: '0.875rem' }}>Value Trend</InputLabel>
+          <Select
+            value={valueTrendFilter}
+            label="Value Trend"
+            onChange={(e) => setValueTrendFilter(e.target.value)}
+            sx={{ fontSize: '0.875rem', height: 32 }}
+          >
+            <MenuItem value="all">All</MenuItem>
+            <MenuItem value="up">Trending Up ▲</MenuItem>
+            <MenuItem value="stable">Stable →</MenuItem>
+            <MenuItem value="down">Trending Down ▼</MenuItem>
+          </Select>
+        </FormControl>
+        
         <Typography variant="body2" sx={{ color: 'text.secondary', ml: 'auto' }}>
           Showing {filteredPlayers.length} of {players.length} players
         </Typography>

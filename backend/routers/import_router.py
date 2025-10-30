@@ -574,6 +574,14 @@ async def import_nfl_stats(
         # Delete all existing historical stats
         db.execute(text("DELETE FROM historical_stats"))
 
+        # Determine season from current year or use 2025 as default
+        # Get the most recent season from weeks table
+        season_result = db.execute(
+            text("SELECT MAX(season) FROM weeks")
+        ).scalar()
+        season = season_result if season_result else 2025
+        logger.info(f"Importing comprehensive stats for season {season}")
+
         # Bulk insert new records
         if records:
             insert_stmt = text("""
@@ -604,7 +612,7 @@ async def import_nfl_stats(
                     {
                         "player_key": record.get("player_key", ""),
                         "week": record.get("week"),
-                        "season": 2024,  # Current season - can be made dynamic
+                        "season": season,
                         "team": record.get("team", ""),
                         "opponent": record.get("opponent"),
                         "snaps": record.get("snaps"),

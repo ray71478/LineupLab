@@ -35,6 +35,7 @@ from backend.schemas.smart_score_schemas import (
     ScoreBreakdown,
     PlayerScoreResponse,
 )
+from backend.services.historical_insights_service import HistoricalInsightsService
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,7 @@ class SmartScoreService:
         # Cache for calculation results: (cache_key, (results, timestamp))
         self._calculation_cache: Dict[str, Tuple[List[PlayerScoreResponse], datetime]] = {}
         self._cache_ttl = timedelta(minutes=5)  # 5 minute TTL
+        self._insights_service = HistoricalInsightsService(session)
 
     def calculate_smart_score(
         self,
@@ -782,6 +784,20 @@ class SmartScoreService:
             players_query, {"week_id": week_id}
         ).fetchall()
 
+        # Get season and week_number for insights
+        try:
+            week_info = self.session.execute(
+                text("SELECT season, week_number FROM weeks WHERE id = :week_id"),
+                {"week_id": week_id},
+            ).fetchone()
+            season = week_info.season if week_info else None
+            current_week_num = week_info.week_number if week_info else None
+        except Exception as e:
+            logger.warning(f"Error getting week info: {e}")
+            self.session.rollback()
+            season = None
+            current_week_num = None
+
         results = []
 
         for row in rows:
@@ -804,6 +820,57 @@ class SmartScoreService:
                 player_data, week_id, weights, config
             )
 
+            # Calculate historical insights
+            consistency_score = None
+            opponent_matchup_avg = None
+            salary_efficiency_trend = None
+            usage_warnings = None
+            stack_partners = None
+
+            if season:
+                # Consistency score
+                consistency = self._insights_service.get_player_consistency(
+                    player_data.player_key, season, weeks_back=6
+                )
+                consistency_score = consistency.get("consistency_score")
+
+                # Salary efficiency trend
+                efficiency = self._insights_service.get_salary_efficiency_trend(
+                    player_data.player_key, season, weeks_back=6
+                )
+                salary_efficiency_trend = efficiency.get("trend")
+
+                # Usage warnings
+                if current_week_num:
+                    usage = self._insights_service.get_usage_pattern_warnings(
+                        player_data.player_key, season, current_week_num
+                    )
+                    usage_warnings = usage.get("warnings") if usage.get("has_warning") else None
+
+                # Stack partners (metadata only - does NOT affect Smart Score)
+                # Only for QB, WR, TE positions
+                if player_data.position in ("QB", "WR", "TE"):
+                    stack_partners = self._insights_service.get_top_stack_partners(
+                        player_data.player_key,
+                        player_data.position,
+                        player_data.team,
+                        season,
+                        week_id,
+                        limit=3
+                    )
+                    # Only include if we have at least one partner with correlation > 0.5
+                    if stack_partners:
+                        stack_partners = [
+                            p for p in stack_partners 
+                            if p.get("correlation") is not None and p.get("correlation", 0) > 0.5
+                        ]
+                        if not stack_partners:
+                            stack_partners = None
+
+                # Opponent matchup history (optional - need to get opponent)
+                # For now, skip if we don't have opponent info readily available
+                # TODO: Enhance to lookup opponent from NFL schedule
+
             # Create response
             player_response = PlayerScoreResponse(
                 player_id=player_data.player_id,
@@ -820,6 +887,11 @@ class SmartScoreService:
                 games_with_20_plus_snaps=games_count,
                 regression_risk=regression_risk,
                 score_breakdown=breakdown,
+                consistency_score=consistency_score,
+                opponent_matchup_avg=opponent_matchup_avg,
+                salary_efficiency_trend=salary_efficiency_trend,
+                usage_warnings=usage_warnings,
+                stack_partners=stack_partners,
             )
 
             results.append(player_response)
