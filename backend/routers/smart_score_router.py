@@ -9,7 +9,7 @@ Provides REST API endpoints for:
 
 import logging
 import time
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -333,9 +333,9 @@ async def delete_weight_profile(
 
 @router.post("/cache/invalidate")
 async def invalidate_smart_score_cache(
-    week_id: int | None = None,
+    week_id: Optional[int] = None,
     db: Any = Depends(_get_current_db_dependency),
-) -> dict[str, Any]:
+) -> dict:
     """
     Invalidate Smart Score calculation cache.
 
