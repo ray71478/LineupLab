@@ -168,11 +168,8 @@ export const SmartScorePage: React.FC = () => {
       const calculatedPlayers = await calculateScores(weekId, currentWeights, currentConfig);
       setLocalPlayers(calculatedPlayers);
 
-      // Show snapshot modal if there are changes
-      const changes = getTopChanges(calculatedPlayers);
-      if (changes.length > 0) {
-        setShowSnapshotModal(true);
-      }
+      // Snapshot modal disabled - user prefers to see changes directly in table
+      // Snapshot is still created for delta tracking in the table
     } catch (err) {
       console.error('Failed to calculate scores:', err);
     }
