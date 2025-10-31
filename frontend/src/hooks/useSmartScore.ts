@@ -54,12 +54,32 @@ async function fetchPlayersWithScores(weekId: number): Promise<PlayerScoreRespon
  * Calculate Smart Scores for all players in a week
  */
 async function calculateScores(request: CalculateScoreRequest): Promise<PlayerScoreResponse[]> {
+  // Create a clean request object to avoid circular reference issues
+  const cleanRequest = {
+    week_id: request.week_id,
+    weights: {
+      W1: request.weights.W1,
+      W2: request.weights.W2,
+      W3: request.weights.W3,
+      W4: request.weights.W4,
+      W5: request.weights.W5,
+      W6: request.weights.W6,
+      W7: request.weights.W7,
+      W8: request.weights.W8,
+    },
+    config: {
+      projection_source: request.config.projection_source,
+      eighty_twenty_enabled: request.config.eighty_twenty_enabled,
+      eighty_twenty_threshold: request.config.eighty_twenty_threshold,
+    },
+  };
+
   const response = await fetch('/api/smart-score/calculate', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(request),
+    body: JSON.stringify(cleanRequest),
   });
 
   if (!response.ok) {

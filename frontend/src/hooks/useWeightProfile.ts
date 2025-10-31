@@ -183,14 +183,22 @@ export const useWeightProfile = (): UseWeightProfileReturn => {
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  // Load default profile on mount
+  // Load default profile on mount (only if no profile is currently selected)
   useEffect(() => {
     const loadDefault = async () => {
+      // Don't overwrite if user has already selected a profile
+      if (currentProfile !== null) {
+        console.log('Skipping default profile load - profile already selected:', currentProfile.name);
+        return;
+      }
+      
       try {
+        console.log('Loading default profile on mount...');
         const defaultProfile = await fetchDefaultProfile();
         setCurrentProfile(defaultProfile);
         setCurrentWeights(defaultProfile.weights);
         setCurrentConfig(defaultProfile.config);
+        console.log('Default profile loaded:', defaultProfile.name);
       } catch (err) {
         // If default profile doesn't exist, use defaults
         console.warn('Could not load default profile, using defaults:', err);
@@ -198,7 +206,7 @@ export const useWeightProfile = (): UseWeightProfileReturn => {
     };
 
     loadDefault();
-  }, []);
+  }, []); // Only run on mount
 
   // Create profile mutation
   const createMutation = useMutation({
@@ -241,13 +249,20 @@ export const useWeightProfile = (): UseWeightProfileReturn => {
   );
 
   const loadProfile = useCallback((profileId: number) => {
+    console.log('loadProfile called with profileId:', profileId);
+    console.log('Available profiles:', profiles.map(p => ({ id: p.id, name: p.name })));
     const profile = profiles.find((p) => p.id === profileId);
     if (profile) {
+      console.log('loadProfile: Setting profile to', profile.name, 'with weights:', profile.weights);
+      console.log('loadProfile: Current profile before update:', currentProfile?.name);
       setCurrentProfile(profile);
       setCurrentWeights(profile.weights);
       setCurrentConfig(profile.config);
+      console.log('loadProfile: State update called - profile should be:', profile.name);
+    } else {
+      console.error('loadProfile: Profile not found with ID:', profileId, 'Available profiles:', profiles.map(p => ({ id: p.id, name: p.name })));
     }
-  }, [profiles]);
+  }, [profiles, currentProfile]);
 
   const loadDefaultProfile = useCallback(async () => {
     try {

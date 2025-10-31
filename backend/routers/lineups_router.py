@@ -72,8 +72,8 @@ async def generate_lineups(
         
         # Get default weight profile and config
         default_profile = weight_profile_service.get_default_profile()
-        weights = WeightProfile(**default_profile.weights)
-        config = ScoreConfig(**default_profile.config)
+        weights = default_profile.weights  # Already a WeightProfile object
+        config = default_profile.config  # Already a ScoreConfig object
         
         # Calculate Smart Scores
         players_with_scores = smart_score_service.calculate_for_all_players(
@@ -108,23 +108,96 @@ async def generate_lineups(
         
         # Generate lineups
         optimizer_service = LineupOptimizerService(db)
-        generated_lineups = optimizer_service.generate_lineups(
+        
+        logger.info(
+            f"Attempting to generate {request.settings.num_lineups} lineups "
+            f"from {len(players_with_scores)} players for week {request.week_id}"
+        )
+        
+        generated_lineups, position_counts = optimizer_service.generate_lineups(
             week_id=request.week_id,
             players=players_with_scores,
             settings=request.settings,
         )
         
+        # If we got some lineups but not all requested, log a warning but return success
+        if generated_lineups and len(generated_lineups) < request.settings.num_lineups:
+            logger.warning(
+                f"Generated {len(generated_lineups)} lineups out of {request.settings.num_lineups} requested. "
+                f"Some lineups may have failed due to constraint conflicts."
+            )
+        
+        # Only raise error if NO lineups were generated
         if not generated_lineups:
+            # Use position counts from optimizer if available (after filtering)
+            if position_counts:
+                position_detail = ", ".join([f"{pos}: {count}" for pos, count in sorted(position_counts.items())])
+                
+                # Check if we have enough players at each position
+                required_positions = {'QB': 1, 'RB': 2, 'WR': 3, 'TE': 1, 'DST': 1}
+                has_enough_players = all(
+                    position_counts.get(pos, 0) >= min_count 
+                    for pos, min_count in required_positions.items()
+                )
+                
+                if has_enough_players:
+                    # Enough players but solver failed - constraints likely too restrictive
+                    threshold_info = f" (Smart Score threshold: {request.settings.smart_score_threshold})" if request.settings.smart_score_threshold else ""
+                    error_msg = (
+                        f"Failed to generate lineups. Optimization solver could not find a feasible solution. "
+                        f"Available players: {position_detail}. "
+                        f"Required: QB: 1, RB: 2, WR: 3, TE: 1, DST: 1.{threshold_info} "
+                        f"Try relaxing constraints (stacking rules, max players per team/game) or reducing Smart Score threshold."
+                    )
+                else:
+                    # Not enough players at required positions
+                    threshold_info = f" (Smart Score threshold: {request.settings.smart_score_threshold})" if request.settings.smart_score_threshold else ""
+                    error_msg = (
+                        f"Failed to generate lineups. Not enough players at required positions after filtering{threshold_info}. "
+                        f"Available (after Smart Score threshold): {position_detail}. "
+                        f"Required: QB: 1, RB: 2, WR: 3, TE: 1, DST: 1. "
+                        f"Try reducing Smart Score threshold or selecting more players."
+                    )
+            else:
+                # Fallback to counting before filtering
+                position_counts = {}
+                for player in players_with_scores:
+                    pos = player.position
+                    position_counts[pos] = position_counts.get(pos, 0) + 1
+                position_detail = ", ".join([f"{pos}: {count}" for pos, count in sorted(position_counts.items())])
+                error_msg = (
+                    f"Failed to generate lineups. Not enough players at required positions. "
+                    f"Available: {position_detail}. "
+                    f"Required: QB: 1, RB: 2, WR: 3, TE: 1, DST: 1. "
+                    f"Try reducing Smart Score threshold or selecting more players."
+                )
+            
+            logger.error(
+                f"Lineup generation returned empty list. "
+                f"Players: {len(players_with_scores)}, "
+                f"Settings: {request.settings}, "
+                f"Position counts: {position_counts}"
+            )
+            
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to generate lineups. Check constraints and player pool.",
+                detail=error_msg,
             )
         
         generation_time_ms = (time.time() - start_time) * 1000
         
-        logger.info(
-            f"Generated {len(generated_lineups)} lineups for week {request.week_id} in {generation_time_ms:.2f}ms"
-        )
+        requested_count = request.settings.num_lineups
+        generated_count = len(generated_lineups)
+        
+        if generated_count < requested_count:
+            logger.info(
+                f"Generated {generated_count} lineups out of {requested_count} requested "
+                f"for week {request.week_id} in {generation_time_ms:.2f}ms"
+            )
+        else:
+            logger.info(
+                f"Generated {generated_count} lineups for week {request.week_id} in {generation_time_ms:.2f}ms"
+            )
         
         return LineupOptimizationResponse(
             week_id=request.week_id,

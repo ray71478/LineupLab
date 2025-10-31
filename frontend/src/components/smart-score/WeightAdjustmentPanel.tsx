@@ -36,7 +36,7 @@ import { ProfileSelector } from './ProfileSelector';
 export interface WeightAdjustmentPanelProps {
   weights: WeightProfile;
   config: ScoreConfig;
-  onApply: () => void;
+  onApply: (weights?: WeightProfile, config?: ScoreConfig) => void;
   onReset: () => void;
   onWeightsChange?: (weights: WeightProfile) => void;
   onConfigChange?: (config: ScoreConfig) => void;
@@ -72,16 +72,70 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [expanded, setExpanded] = React.useState(!isMobile);
-  const [localWeights, setLocalWeights] = React.useState<WeightProfile>(weights);
-  const [localConfig, setLocalConfig] = React.useState<ScoreConfig>(config);
+  
+  // Default config if not provided
+  const defaultConfig: ScoreConfig = {
+    projection_source: 'ETR',
+    eighty_twenty_enabled: true,
+    eighty_twenty_threshold: 20.0,
+  };
+  
+  const [localWeights, setLocalWeights] = React.useState<WeightProfile>(weights || {
+    W1: 0.125,
+    W2: 0.125,
+    W3: 0.125,
+    W4: 0.125,
+    W5: 0.125,
+    W6: 0.125,
+    W7: 0.125,
+    W8: 0.125,
+  });
+  const [localConfig, setLocalConfig] = React.useState<ScoreConfig>(config || defaultConfig);
 
   // Update local state when props change
+  // Use a ref to track previous values and compare deeply
+  const prevWeightsRef = React.useRef<string>();
+  const prevConfigRef = React.useRef<string>();
+
   React.useEffect(() => {
-    setLocalWeights(weights);
+    const weightsStr = JSON.stringify(weights);
+    if (prevWeightsRef.current !== weightsStr) {
+      console.log('WeightAdjustmentPanel: weights prop changed', weights);
+      console.log('WeightAdjustmentPanel: Previous weights string:', prevWeightsRef.current);
+      console.log('WeightAdjustmentPanel: New weights string:', weightsStr);
+      setLocalWeights(weights);
+      prevWeightsRef.current = weightsStr;
+      console.log('WeightAdjustmentPanel: localWeights updated to:', weights);
+    } else {
+      console.log('WeightAdjustmentPanel: weights prop unchanged (same JSON string)');
+    }
   }, [weights]);
 
   React.useEffect(() => {
-    setLocalConfig(config);
+    if (!config) {
+      console.warn('WeightAdjustmentPanel: config prop is undefined/null');
+      return;
+    }
+    
+    try {
+      const configStr = JSON.stringify(config);
+      if (prevConfigRef.current !== configStr) {
+        console.log('WeightAdjustmentPanel: config prop changed', config);
+        console.log('WeightAdjustmentPanel: Previous config string:', prevConfigRef.current);
+        console.log('WeightAdjustmentPanel: New config string:', configStr);
+        setLocalConfig(config);
+        prevConfigRef.current = configStr;
+        console.log('WeightAdjustmentPanel: localConfig updated to:', config);
+      } else {
+        console.log('WeightAdjustmentPanel: config prop unchanged (same JSON string)');
+      }
+    } catch (err) {
+      console.error('WeightAdjustmentPanel: Error stringifying config:', err);
+      // Still update if config is valid object
+      if (config && typeof config === 'object') {
+        setLocalConfig(config);
+      }
+    }
   }, [config]);
 
   // Auto-expand on mobile when opened
@@ -125,8 +179,9 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
       // Don't block the apply if cache invalidation fails
     }
 
-    // Then call the original apply handler
-    onApply();
+    // Then call the original apply handler with current local weights/config
+    console.log('WeightAdjustmentPanel: Apply button clicked, using localWeights:', localWeights, 'localConfig:', localConfig);
+    onApply(localWeights, localConfig);
   };
 
   return (
@@ -172,6 +227,17 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
           <ProfileSelector
             currentWeights={localWeights}
             currentConfig={localConfig}
+            onProfileChange={(profileId, weights, config) => {
+              // Update sliders immediately when profile is selected
+              console.log('ProfileSelector: Profile changed, updating sliders with weights:', weights, 'config:', config);
+              if (weights) {
+                setLocalWeights(weights);
+              }
+              if (config) {
+                setLocalConfig(config);
+              }
+            }}
+            isCalculating={isCalculating}
           />
         </Box>
 
@@ -181,14 +247,16 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
       <FormControl fullWidth size="small" sx={{ mb: 2 }}>
         <InputLabel sx={{ fontSize: '0.75rem' }}>Projection Source</InputLabel>
           <Select
-            value={localConfig.projection_source}
+            value={localConfig?.projection_source || 'ETR'}
             label="Projection Source"
-            onChange={(e) =>
-              handleConfigChange({
-                ...localConfig,
-                projection_source: e.target.value as 'ETR' | 'LineStar',
-              })
-            }
+            onChange={(e) => {
+              if (localConfig) {
+                handleConfigChange({
+                  ...localConfig,
+                  projection_source: e.target.value as 'ETR' | 'LineStar',
+                });
+              }
+            }}
             sx={{
               fontSize: '0.75rem',
               '& .MuiSelect-select': {
@@ -204,7 +272,7 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
       <Divider sx={{ mb: 2 }} />
 
       {/* Weight Sliders */}
-      <Stack spacing={1.5}>
+      <Stack spacing={1.5} key={JSON.stringify(localWeights)}>
         {(Object.keys(WEIGHT_LABELS) as Array<keyof WeightProfile>).map((key) => {
           const isDisabled = key in DISABLED_WEIGHTS;
           const disabledReason = DISABLED_WEIGHTS[key as keyof typeof DISABLED_WEIGHTS];

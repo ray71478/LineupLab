@@ -38,13 +38,17 @@ import { useWeightProfile } from '../../hooks';
 export interface ProfileSelectorProps {
   currentWeights: WeightProfile;
   currentConfig: ScoreConfig;
-  onProfileChange?: (profileId: number) => void;
+  onProfileChange?: (profileId: number, weights: WeightProfile, config: ScoreConfig) => void;
+  onApplyProfile?: (weights: WeightProfile, config: ScoreConfig) => void;
+  isCalculating?: boolean;
 }
 
 export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
   currentWeights,
   currentConfig,
   onProfileChange,
+  onApplyProfile,
+  isCalculating = false,
 }) => {
   const {
     profiles,
@@ -61,8 +65,18 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
   const [isSaving, setIsSaving] = useState(false);
 
   const handleProfileSelect = (profileId: number) => {
+    console.log('Profile selected:', profileId, 'Available profiles:', profiles.map(p => ({ id: p.id, name: p.name })));
+    const profile = profiles.find(p => p.id === profileId);
+    if (!profile) {
+      console.error('Profile not found:', profileId);
+      return;
+    }
+    console.log('Loading profile:', profile.name);
     loadProfile(profileId);
-    // Profile change will trigger automatic recalculation via useEffect in SmartScorePage
+    // Notify parent component to update sliders immediately
+    if (onProfileChange) {
+      onProfileChange(profileId, profile.weights, profile.config);
+    }
   };
 
   const handleOpenSaveDialog = () => {

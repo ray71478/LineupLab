@@ -63,7 +63,7 @@ class LineupOptimizerService:
         week_id: int,
         players: List[PlayerScoreResponse],
         settings: OptimizationSettings,
-    ) -> List[GeneratedLineup]:
+    ) -> Tuple[List[GeneratedLineup], Optional[Dict[str, int]]]:
         """
         Generate optimized lineups based on Smart Scores and constraints.
         
@@ -73,32 +73,70 @@ class LineupOptimizerService:
             settings: Optimization settings (strategy, exposure limits, etc.)
         
         Returns:
-            List of GeneratedLineup objects
+            Tuple of (list of GeneratedLineup objects, position_counts dict if failed)
         """
         if not players:
             logger.warning("No players provided for optimization")
-            return []
+            return [], {}
         
         # Filter players by Smart Score threshold if set
         filtered_players = self._filter_by_threshold(players, settings.smart_score_threshold)
         
+        logger.info(
+            f"After Smart Score threshold filtering: {len(filtered_players)} players "
+            f"(from {len(players)} total, threshold: {settings.smart_score_threshold})"
+        )
+        
         if len(filtered_players) < TOTAL_POSITIONS:
             logger.warning(f"Not enough players ({len(filtered_players)}) for {TOTAL_POSITIONS} positions")
-            return []
+            # Count positions before returning
+            position_counts = {}
+            for player in filtered_players:
+                pos = player.position
+                position_counts[pos] = position_counts.get(pos, 0) + 1
+            return [], position_counts
         
         # Convert to optimization data
         opt_players = self._prepare_players(filtered_players)
+        
+        logger.info(
+            f"After preparing players (removing null Smart Scores): {len(opt_players)} players "
+            f"(from {len(filtered_players)} filtered)"
+        )
         
         # Group players by position and team for constraints
         players_by_position = self._group_by_position(opt_players)
         players_by_team = self._group_by_team(opt_players)
         
+        # Validate we have enough players in each position
+        required_positions = {'QB': 1, 'RB': 2, 'WR': 3, 'TE': 1, 'DST': 1}
+        missing_positions = []
+        position_counts = {}
+        for pos, min_count in required_positions.items():
+            available = len(players_by_position.get(pos, []))
+            position_counts[pos] = available
+            if available < min_count:
+                missing_positions.append(f"{pos}: {available} available, {min_count} required")
+                logger.warning(f"Not enough {pos} players: {available} available, {min_count} required")
+        
+        if missing_positions:
+            logger.error(
+                f"Position validation failed after Smart Score threshold ({settings.smart_score_threshold}). "
+                f"Counts: {position_counts}. Missing: {', '.join(missing_positions)}"
+            )
+            return [], position_counts
+        
         # Get game info for stacking constraints
         game_info = self._get_game_info(week_id, opt_players)
+        logger.info(f"Retrieved game info for {len(game_info)} teams")
         
         generated_lineups = []
         
         # Generate each lineup iteratively with diversity penalty
+        # Try to generate as many as possible, even if some fail
+        consecutive_failures = 0
+        max_consecutive_failures = 3  # Stop after 3 consecutive failures
+        
         for lineup_num in range(1, settings.num_lineups + 1):
             try:
                 lineup = self._generate_single_lineup(
@@ -113,15 +151,60 @@ class LineupOptimizerService:
                 
                 if lineup:
                     generated_lineups.append(lineup)
+                    consecutive_failures = 0  # Reset failure counter
+                    logger.info(f"Successfully generated lineup {lineup_num}/{settings.num_lineups}")
                 else:
-                    logger.warning(f"Failed to generate lineup {lineup_num}")
-                    break  # Stop if we can't generate more
+                    consecutive_failures += 1
+                    logger.warning(
+                        f"Failed to generate lineup {lineup_num} - optimization may be infeasible "
+                        f"({consecutive_failures} consecutive failures)"
+                    )
+                    
+                    # If we can't generate even the first lineup, log detailed info
+                    if lineup_num == 1:
+                        logger.error(
+                            f"Could not generate first lineup. "
+                            f"Position counts: {position_counts}, "
+                            f"Total players: {len(opt_players)}, "
+                            f"Settings: {settings}"
+                        )
+                        # Still return position counts for error message, but try to generate more
+                    
+                    # Stop if too many consecutive failures
+                    if consecutive_failures >= max_consecutive_failures:
+                        logger.warning(
+                            f"Stopping after {consecutive_failures} consecutive failures. "
+                            f"Generated {len(generated_lineups)} lineups out of {settings.num_lineups} requested."
+                        )
+                        break
+                    
+                    # Continue trying more lineups even after a failure
                     
             except Exception as e:
-                logger.error(f"Error generating lineup {lineup_num}: {e}")
-                break
+                consecutive_failures += 1
+                logger.error(f"Error generating lineup {lineup_num}: {e}", exc_info=True)
+                if lineup_num == 1:
+                    logger.error(
+                        f"Exception on first lineup. "
+                        f"Position counts: {position_counts}, "
+                        f"Total players: {len(opt_players)}"
+                    )
+                
+                # Stop if too many consecutive failures
+                if consecutive_failures >= max_consecutive_failures:
+                    logger.warning(
+                        f"Stopping after {consecutive_failures} consecutive failures. "
+                        f"Generated {len(generated_lineups)} lineups out of {settings.num_lineups} requested."
+                    )
+                    break
         
-        return generated_lineups
+        # Return whatever we successfully generated, along with position counts if empty
+        if generated_lineups:
+            logger.info(f"Successfully generated {len(generated_lineups)} lineups (requested {settings.num_lineups})")
+            return generated_lineups, None
+        else:
+            # No lineups generated - return position counts for error message
+            return [], position_counts
     
     def _filter_by_threshold(
         self,
@@ -189,7 +272,7 @@ class LineupOptimizerService:
         """Get game information for stacking constraints."""
         # Query vegas_lines to get opponent info
         query = text("""
-            SELECT team, opponent, game_id
+            SELECT team, opponent
             FROM vegas_lines
             WHERE week_id = :week_id
         """)
@@ -200,7 +283,6 @@ class LineupOptimizerService:
         for row in rows:
             game_info[row.team] = {
                 'opponent': row.opponent,
-                'game_id': getattr(row, 'game_id', None),
             }
         
         return game_info
@@ -267,7 +349,30 @@ class LineupOptimizerService:
         prob.solve(pulp.PULP_CBC_CMD(msg=0))  # Silent mode
         
         if prob.status != pulp.LpStatusOptimal:
-            logger.warning(f"Optimization failed with status: {prob.status}")
+            # Log detailed constraint info for debugging
+            logger.warning(
+                f"Optimization failed with status: {prob.status}. "
+                f"Position counts: {dict((pos, len(players)) for pos, players in players_by_position.items())}, "
+                f"Total players: {len(opt_players)}, "
+                f"Settings: max_team={settings.max_players_per_team}, max_game={settings.max_players_per_game}, "
+                f"QB+WR stack={settings.stacking_rules.get('qb_wr_stack_enabled', False) if settings.stacking_rules else False}, "
+                f"Bring-back={settings.stacking_rules.get('bring_back_enabled', False) if settings.stacking_rules else False}"
+            )
+            
+            # Try to identify which constraint might be causing issues
+            if settings.stacking_rules:
+                if settings.stacking_rules.get('qb_wr_stack_enabled', False):
+                    qb_players = [p for p in opt_players if p.position == 'QB']
+                    wr_players = [p for p in opt_players if p.position == 'WR']
+                    qb_teams_with_wrs = {}
+                    for qb in qb_players:
+                        team_wrs = [wr for wr in wr_players if wr.team == qb.team]
+                        qb_teams_with_wrs[qb.team] = len(team_wrs)
+                    logger.warning(f"QB+WR stack check - QBs with WRs from same team: {qb_teams_with_wrs}")
+                
+                if settings.stacking_rules.get('bring_back_enabled', False):
+                    logger.warning(f"Bring-back enabled - game_info has {len(game_info)} teams")
+            
             return None
         
         # Extract selected players
@@ -477,6 +582,67 @@ class LineupOptimizerService:
                 if qb_team_wrs:
                     # If QB selected, at least one WR from same team must be selected
                     prob += pulp.lpSum([player_vars[wr.player_id] for wr in qb_team_wrs]) >= player_vars[qb.player_id]
+                else:
+                    # No WRs from same team available - this makes QB+WR stack impossible for this QB
+                    # Instead of making it infeasible, log a warning and skip the constraint for this QB
+                    logger.warning(
+                        f"QB+WR stack enabled but no WRs from {qb.team} available for QB {qb.name}. "
+                        f"Skipping stack constraint for this QB to avoid infeasibility."
+                    )
+        
+        # Bring-back constraint (opponent team player)
+        # TEMPORARILY DISABLED - This constraint is making the problem infeasible
+        # TODO: Fix bring-back logic to be less restrictive
+        if False and settings.stacking_rules.get('bring_back_enabled', False):
+            # Group players by their game (team + opponent)
+            games: Dict[tuple, List[PlayerOptimizationData]] = defaultdict(list)
+            
+            for player in players:
+                opponent = game_info.get(player.team, {}).get('opponent')
+                if opponent:
+                    # Create game key (alphabetically sorted teams)
+                    game_key = tuple(sorted([player.team, opponent]))
+                    games[game_key].append(player)
+            
+            if not games:
+                logger.warning(
+                    "Bring-back enabled but no opponent data available in game_info. "
+                    "Skipping bring-back constraint to avoid infeasibility."
+                )
+                return
+            
+            logger.info(f"Applying bring-back constraint to {len(games)} games")
+            
+            # Simplified bring-back: If you select players from a game, you must have at least one from each team
+            # This is less restrictive than requiring it for every game
+            # Instead, we'll use a simpler approach: if any player from a game is selected, 
+            # ensure at least one from each team
+            for (team_a, team_b), game_players in games.items():
+                team_a_players = [p for p in game_players if p.team == team_a]
+                team_b_players = [p for p in game_players if p.team == team_b]
+                
+                if not team_a_players or not team_b_players:
+                    # Skip if we don't have players from both teams
+                    continue
+                
+                # Count total players selected from this game
+                game_total = pulp.lpSum([player_vars[p.player_id] for p in game_players])
+                
+                # If any players are selected from this game, ensure at least one from each team
+                # Simplified: if game_total >= 1, then team_a_selected >= 1 AND team_b_selected >= 1
+                # We'll use a binary indicator
+                has_game_players = pulp.LpVariable(f"has_game_{team_a}_{team_b}", cat='Binary')
+                team_a_selected = pulp.lpSum([player_vars[p.player_id] for p in team_a_players])
+                team_b_selected = pulp.lpSum([player_vars[p.player_id] for p in team_b_players])
+                
+                # If game_total >= 1, then has_game_players = 1
+                max_game_players = len(game_players)
+                prob += game_total <= max_game_players * has_game_players
+                prob += has_game_players <= game_total
+                
+                # If has_game_players = 1, then both teams must have at least 1
+                prob += team_a_selected >= has_game_players
+                prob += team_b_selected >= has_game_players
     
     def _add_diversity_penalty(
         self,

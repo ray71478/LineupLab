@@ -6,7 +6,6 @@
  * - Strategy mode (Chalk/Balanced/Contrarian)
  * - Max players per team/game
  * - Stacking rules
- * - Smart Score threshold
  *
  * Design: Dark theme with orange accents
  */
@@ -163,25 +162,6 @@ export const LineupConfigurationPanel: React.FC<LineupConfigurationPanelProps> =
             inputProps={{ min: 1, max: 9 }}
             size="small"
             fullWidth
-            sx={{
-              '& .MuiInputBase-input': {
-                fontSize: '0.875rem',
-              },
-            }}
-          />
-
-          <Divider />
-
-          {/* Smart Score Threshold */}
-          <TextField
-            label="Smart Score Threshold (Optional)"
-            type="number"
-            value={settings.smart_score_threshold || ''}
-            onChange={(e) => handleChange('smart_score_threshold', e.target.value ? parseFloat(e.target.value) : undefined)}
-            placeholder="0 (no filter)"
-            size="small"
-            fullWidth
-            helperText="Exclude players below this threshold"
             sx={{
               '& .MuiInputBase-input': {
                 fontSize: '0.875rem',

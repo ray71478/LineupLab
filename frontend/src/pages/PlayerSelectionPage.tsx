@@ -55,7 +55,7 @@ export const PlayerSelectionPage: React.FC = () => {
 
   const [players, setPlayers] = useState<PlayerScoreResponse[]>([]);
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<number>>(new Set());
-  const [smartScoreThreshold, setSmartScoreThreshold] = useState<number>(0);
+  const [smartScoreThreshold, setSmartScoreThreshold] = useState<number>(25);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -199,7 +199,7 @@ export const PlayerSelectionPage: React.FC = () => {
             type="number"
             value={smartScoreThreshold}
             onChange={(e) => setSmartScoreThreshold(parseFloat(e.target.value) || 0)}
-            placeholder="0 (no filter)"
+            placeholder="25 (default)"
             size="small"
             sx={{
               flex: { xs: 1, md: '0 0 200px' },

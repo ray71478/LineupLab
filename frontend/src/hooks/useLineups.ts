@@ -32,6 +32,7 @@ export interface UseLineupsReturn {
  * Generate optimized lineups
  */
 async function generateLineups(request: LineupOptimizationRequest): Promise<GeneratedLineup[]> {
+  console.log('Generating lineups with request:', request);
   const response = await fetch('/api/lineups/generate', {
     method: 'POST',
     headers: {
@@ -42,6 +43,7 @@ async function generateLineups(request: LineupOptimizationRequest): Promise<Gene
 
   if (!response.ok) {
     const error = await response.json();
+    console.error('Lineup generation failed:', error);
     throw new Error(error.detail || 'Failed to generate lineups');
   }
 

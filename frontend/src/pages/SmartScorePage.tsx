@@ -61,6 +61,11 @@ export const SmartScorePage: React.FC = () => {
     updateConfig,
   } = useWeightProfile();
 
+  // Debug: Log when currentProfile changes
+  React.useEffect(() => {
+    console.log('SmartScorePage: currentProfile changed to:', currentProfile?.name, 'ID:', currentProfile?.id);
+  }, [currentProfile]);
+
   // Smart Score data
   const weekId = currentWeek?.id ?? null;
   const {
@@ -90,18 +95,43 @@ export const SmartScorePage: React.FC = () => {
 
   // Auto-apply when profile changes (but not on initial load)
   useEffect(() => {
+    // Debug logging - check each condition individually
+    const conditions = {
+      hasWeekId: !!weekId,
+      hasCurrentProfile: !!currentProfile,
+      hasWeights: !!currentProfile?.weights,
+      hasConfig: !!currentProfile?.config,
+      profileChanged: currentProfile?.id !== previousProfileId,
+      previousProfileIdNotNull: previousProfileId !== null,
+      isInitialized,
+    };
+    
+    console.log('Profile change effect:', {
+      weekId,
+      currentProfileId: currentProfile?.id,
+      currentProfileName: currentProfile?.name,
+      previousProfileId,
+      isInitialized,
+      conditions,
+      allConditionsMet: Object.values(conditions).every(v => v === true),
+    });
+
     // Only auto-apply if:
     // 1. We have a weekId
-    // 2. We have a currentProfile
+    // 2. We have a currentProfile with weights and config
     // 3. The profile actually changed (not initial load)
     // 4. We're already initialized (scores have been calculated at least once)
     if (
       weekId &&
       currentProfile &&
+      currentProfile.weights &&
+      currentProfile.config &&
       currentProfile.id !== previousProfileId &&
       previousProfileId !== null &&
       isInitialized
     ) {
+      console.log('✅ All conditions met! Triggering profile recalculation for profile:', currentProfile.name);
+      
       // Store previous scores before recalculation
       if (localPlayers.length > 0) {
         createSnapshot(localPlayers);
@@ -113,22 +143,43 @@ export const SmartScorePage: React.FC = () => {
           // Use weights/config from the profile directly to ensure we have the latest values
           const profileWeights = currentProfile.weights;
           const profileConfig = currentProfile.config;
+          console.log('Calculating scores with profile:', currentProfile.name, 'weights:', profileWeights);
           const calculatedPlayers = await calculateScores(weekId, profileWeights, profileConfig);
           setLocalPlayers(calculatedPlayers);
+          console.log('Profile recalculation complete');
         } catch (err) {
           console.error('Failed to calculate scores after profile change:', err);
         }
       };
 
       applyProfile();
+    } else {
+      // Log which conditions are failing
+      const missingConditions = [];
+      if (!weekId) missingConditions.push('weekId');
+      if (!currentProfile) missingConditions.push('currentProfile');
+      if (!currentProfile?.weights) missingConditions.push('weights');
+      if (!currentProfile?.config) missingConditions.push('config');
+      if (currentProfile?.id === previousProfileId) missingConditions.push('profileChanged');
+      if (previousProfileId === null) missingConditions.push('previousProfileIdNotNull');
+      if (!isInitialized) missingConditions.push('isInitialized');
+      
+      if (missingConditions.length > 0) {
+        console.log('❌ Conditions not met for auto-recalculation. Missing:', missingConditions);
+      }
     }
 
     // Update previous profile ID (track even on initial load to set baseline)
-    if (currentProfile) {
+    // Only update if we have a valid profile ID to avoid resetting to null
+    if (currentProfile?.id !== undefined) {
+      const oldPrevId = previousProfileId;
       setPreviousProfileId(currentProfile.id);
+      if (oldPrevId !== currentProfile.id) {
+        console.log(`📝 Updated previousProfileId: ${oldPrevId} → ${currentProfile.id}`);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProfile?.id, weekId, isInitialized]); // Only depend on profile ID, not full profile object
+  }, [currentProfile, weekId, isInitialized]); // Depend on currentProfile object to detect changes
 
   // Reset initialization when week changes
   useEffect(() => {
@@ -230,7 +281,7 @@ export const SmartScorePage: React.FC = () => {
     }
   }, [players]);
 
-  const handleApply = async () => {
+  const handleApply = async (weights?: WeightProfile, config?: ScoreConfig) => {
     if (!weekId) return;
 
     try {
@@ -239,8 +290,19 @@ export const SmartScorePage: React.FC = () => {
         createSnapshot(localPlayers);
       }
 
+      // Use provided weights/config if available, otherwise use currentProfile's, otherwise fall back to hook state
+      const weightsToUse = weights || currentProfile?.weights || currentWeights;
+      const configToUse = config || currentProfile?.config || currentConfig;
+      
+      if (!weightsToUse || !configToUse) {
+        console.error('handleApply: Missing weights or config', { weightsToUse, configToUse });
+        return;
+      }
+      
+      console.log('handleApply: Using weights:', weightsToUse, 'from profile:', currentProfile?.name, 'provided:', !!weights);
+
       // Calculate new scores
-      const calculatedPlayers = await calculateScores(weekId, currentWeights, currentConfig);
+      const calculatedPlayers = await calculateScores(weekId, weightsToUse, configToUse);
       setLocalPlayers(calculatedPlayers);
 
       // Snapshot modal disabled - user prefers to see changes directly in table
@@ -349,6 +411,7 @@ export const SmartScorePage: React.FC = () => {
             >
               <React.Suspense fallback={<CircularProgress />}>
                 <WeightAdjustmentPanel
+                  key={currentProfile?.id || 'default'}
                   weights={currentWeights}
                   config={currentConfig}
                   onApply={handleApply}
