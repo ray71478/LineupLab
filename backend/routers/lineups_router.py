@@ -113,11 +113,28 @@ async def generate_lineups(
                 f"({len(selected_ids_set) - len(players_with_scores)} selected IDs not found in player pool)"
             )
 
-            # Log position breakdown after filtering
+            # Log position breakdown and score distribution after filtering
             pos_counts = {}
+            score_ranges = {'0.0': 0, '0.1-5.0': 0, '5.1-10.0': 0, '10.1-20.0': 0, '20.1-30.0': 0, '30+': 0}
             for p in players_with_scores:
                 pos_counts[p.position] = pos_counts.get(p.position, 0) + 1
+                # Track score distribution
+                if p.smart_score == 0.0:
+                    score_ranges['0.0'] += 1
+                elif p.smart_score <= 5.0:
+                    score_ranges['0.1-5.0'] += 1
+                elif p.smart_score <= 10.0:
+                    score_ranges['5.1-10.0'] += 1
+                elif p.smart_score <= 20.0:
+                    score_ranges['10.1-20.0'] += 1
+                elif p.smart_score <= 30.0:
+                    score_ranges['20.1-30.0'] += 1
+                else:
+                    score_ranges['30+'] += 1
+            
             logger.info(f"Position breakdown after filter: {pos_counts}")
+            logger.info(f"Smart Score distribution: {score_ranges}")
+            logger.info(f"Players with score 0.0: {score_ranges['0.0']} (these will be filtered out by optimizer)")
         
         # Generate lineups
         optimizer_service = LineupOptimizerService(db)
@@ -211,6 +228,15 @@ async def generate_lineups(
             logger.info(
                 f"Generated {generated_count} lineups for week {request.week_id} in {generation_time_ms:.2f}ms"
             )
+        
+        # Log lineup details
+        baseline_count = sum(1 for l in generated_lineups if l.lineup_number < 0)
+        regular_count = sum(1 for l in generated_lineups if l.lineup_number > 0)
+        logger.info(f"Returning {len(generated_lineups)} total lineups: {baseline_count} baselines + {regular_count} regular")
+        
+        # Log each lineup number for debugging
+        lineup_numbers = [l.lineup_number for l in generated_lineups]
+        logger.info(f"Lineup numbers being returned: {lineup_numbers}")
         
         return LineupOptimizationResponse(
             week_id=request.week_id,

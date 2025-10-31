@@ -130,10 +130,10 @@ export const PlayerSelectionPage: React.FC = () => {
     setSelectedPlayerIds(newSelection);
   };
 
-  // Get selected players
+  // Get selected players - MUST use filteredPlayers to respect threshold
   const selectedPlayers = useMemo(() => {
-    return players.filter((p) => selectedPlayerIds.has(p.player_id));
-  }, [players, selectedPlayerIds]);
+    return filteredPlayers.filter((p) => selectedPlayerIds.has(p.player_id));
+  }, [filteredPlayers, selectedPlayerIds]);
 
   // Navigate to lineup page with selected players
   const handleApproveAndSend = () => {

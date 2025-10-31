@@ -50,6 +50,7 @@ class PlayerOptimizationData:
     smart_score: float
     ownership: float
     projection: Optional[float]
+    implied_team_total: Optional[float] = None  # Vegas ITT for tournament filtering
 
 
 class LineupOptimizerService:
@@ -66,6 +67,12 @@ class LineupOptimizerService:
     ) -> Tuple[List[GeneratedLineup], Optional[Dict[str, int]]]:
         """
         Generate optimized lineups based on Smart Scores and constraints.
+        
+        Always generates 2 baseline lineups first:
+        1. "Best Smart Score" - Pure Smart Score optimization (lineup_number = -1)
+        2. "Best Projection" - Pure projection optimization (lineup_number = -2)
+        
+        Then generates N user-requested lineups with diversity constraints.
         
         Args:
             week_id: Week ID
@@ -97,7 +104,7 @@ class LineupOptimizerService:
             return [], position_counts
         
         # Convert to optimization data
-        opt_players = self._prepare_players(filtered_players)
+        opt_players = self._prepare_players(filtered_players, strategy_mode=settings.strategy_mode)
         
         logger.info(
             f"After preparing players (removing null Smart Scores): {len(opt_players)} players "
@@ -132,7 +139,58 @@ class LineupOptimizerService:
         
         generated_lineups = []
         
-        # Generate each lineup iteratively with diversity penalty
+        # FIRST: Generate 2 baseline lineups (unconstrained, no diversity penalties)
+        logger.info("=" * 80)
+        logger.info("GENERATING BASELINE LINEUPS (unconstrained optimization)")
+        logger.info(f"Available players: {len(opt_players)}")
+        logger.info(f"Salary cap: $50000")
+        logger.info("=" * 80)
+        
+        # Baseline 1: Best Smart Score (lineup_number = -1)
+        try:
+            logger.info("Attempting to generate 'Best Smart Score' baseline...")
+            baseline_smart_score = self._generate_baseline_lineup(
+                opt_players=opt_players,
+                players_by_position=players_by_position,
+                players_by_team=players_by_team,
+                game_info=game_info,
+                settings=settings,
+                lineup_number=-1,
+                optimize_for='smart_score',
+            )
+            if baseline_smart_score:
+                generated_lineups.append(baseline_smart_score)
+                logger.info(f"✓ Generated baseline 'Best Smart Score': ${baseline_smart_score.total_salary/1000:.1f}K, score={baseline_smart_score.projected_score:.1f}, proj={baseline_smart_score.projected_points:.1f}")
+            else:
+                logger.warning("✗ Failed to generate 'Best Smart Score' baseline lineup (optimization returned None)")
+        except Exception as e:
+            logger.error(f"✗ Error generating 'Best Smart Score' baseline: {e}", exc_info=True)
+        
+        # Baseline 2: Best Projection (lineup_number = -2)
+        try:
+            logger.info("Attempting to generate 'Best Projection' baseline...")
+            baseline_projection = self._generate_baseline_lineup(
+                opt_players=opt_players,
+                players_by_position=players_by_position,
+                players_by_team=players_by_team,
+                game_info=game_info,
+                settings=settings,
+                lineup_number=-2,
+                optimize_for='projection',
+            )
+            if baseline_projection:
+                generated_lineups.append(baseline_projection)
+                logger.info(f"✓ Generated baseline 'Best Projection': ${baseline_projection.total_salary/1000:.1f}K, score={baseline_projection.projected_score:.1f}, proj={baseline_projection.projected_points:.1f}")
+            else:
+                logger.warning("✗ Failed to generate 'Best Projection' baseline lineup (optimization returned None)")
+        except Exception as e:
+            logger.error(f"✗ Error generating 'Best Projection' baseline: {e}", exc_info=True)
+        
+        logger.info("=" * 80)
+        logger.info(f"Baseline generation complete. Generated {len(generated_lineups)} baseline lineups.")
+        logger.info("=" * 80)
+        
+        # NOW: Generate each user-requested lineup iteratively with diversity penalty
         # Try to generate as many as possible, even if some fail
         consecutive_failures = 0
         max_consecutive_failures = 3  # Stop after 3 consecutive failures
@@ -200,7 +258,13 @@ class LineupOptimizerService:
         
         # Return whatever we successfully generated, along with position counts if empty
         if generated_lineups:
-            logger.info(f"Successfully generated {len(generated_lineups)} lineups (requested {settings.num_lineups})")
+            baseline_count = sum(1 for l in generated_lineups if l.lineup_number < 0)
+            regular_count = sum(1 for l in generated_lineups if l.lineup_number > 0)
+            logger.info(f"Successfully generated {len(generated_lineups)} lineups ({baseline_count} baselines + {regular_count} user-requested)")
+            
+            # Sort lineups: baselines first (negative numbers), then regular lineups (positive numbers)
+            generated_lineups.sort(key=lambda x: (x.lineup_number >= 0, abs(x.lineup_number)))
+            
             return generated_lineups, None
         else:
             # No lineups generated - return position counts for error message
@@ -221,18 +285,45 @@ class LineupOptimizerService:
     
     def _prepare_players(
         self,
-        players: List[PlayerScoreResponse]
+        players: List[PlayerScoreResponse],
+        strategy_mode: str = 'Balanced'
     ) -> List[PlayerOptimizationData]:
-        """Convert PlayerScoreResponse to PlayerOptimizationData."""
+        """
+        Convert PlayerScoreResponse to PlayerOptimizationData.
+        
+        Filters out invalid players:
+        - Null or zero Smart Score (no projection/not playing)
+        - Null or zero salary (data issues)
+        - Missing projection (can't score points)
+        
+        For Tournament mode, applies additional filters:
+        - ITT > 18.5 (93% of top performers)
+        - Ownership filters (RB chalk OK, others < 20%)
+        """
         opt_players = []
         skipped_null_score = 0
+        skipped_zero_score = 0
         skipped_null_salary = 0
         skipped_zero_salary = 0
+        skipped_no_projection = 0
+        skipped_tournament_filter = 0
 
         for player in players:
             # Skip players with null smart score
             if player.smart_score is None:
                 skipped_null_score += 1
+                continue
+            
+            # Skip players with zero smart score (likely not playing or missing data)
+            if player.smart_score <= 0:
+                logger.debug(f"Player {player.name} ({player.position}) has Smart Score {player.smart_score} - skipping")
+                skipped_zero_score += 1
+                continue
+            
+            # Skip players with no projection (can't score fantasy points)
+            if player.projection is None or player.projection <= 0:
+                logger.debug(f"Player {player.name} ({player.position}) has no projection - skipping")
+                skipped_no_projection += 1
                 continue
 
             # Check for data issues
@@ -246,6 +337,21 @@ class LineupOptimizerService:
                 skipped_zero_salary += 1
                 continue
 
+            # Tournament mode filters (based on research)
+            if strategy_mode == 'Tournament':
+                # Filter by ITT > 18.5 (93% of top performers)
+                if player.implied_team_total is not None and player.implied_team_total <= 18.5:
+                    skipped_tournament_filter += 1
+                    logger.debug(f"Player {player.name} ({player.position}) filtered: ITT {player.implied_team_total} <= 18.5")
+                    continue
+                
+                # Ownership filter: RB chalk OK, others must be < 20%
+                ownership_pct = (player.ownership or 0.0) * 100.0  # Convert to percentage
+                if player.position != 'RB' and ownership_pct >= 20.0:
+                    skipped_tournament_filter += 1
+                    logger.debug(f"Player {player.name} ({player.position}) filtered: ownership {ownership_pct:.1f}% >= 20% (non-RB)")
+                    continue
+
             opt_players.append(PlayerOptimizationData(
                 player_id=player.player_id,
                 player_key=player.player_key,
@@ -256,12 +362,19 @@ class LineupOptimizerService:
                 smart_score=player.smart_score,
                 ownership=player.ownership or 0.0,
                 projection=player.projection,
+                implied_team_total=player.implied_team_total,
             ))
 
-        if skipped_null_score + skipped_null_salary + skipped_zero_salary > 0:
+        total_skipped = skipped_null_score + skipped_zero_score + skipped_null_salary + skipped_zero_salary + skipped_no_projection + skipped_tournament_filter
+        if total_skipped > 0:
             logger.warning(
-                f"Skipped players: {skipped_null_score} null scores, "
-                f"{skipped_null_salary} null salaries, {skipped_zero_salary} zero salaries"
+                f"Skipped {total_skipped} players: "
+                f"{skipped_null_score} null scores, "
+                f"{skipped_zero_score} zero/negative scores, "
+                f"{skipped_no_projection} no projection, "
+                f"{skipped_null_salary} null salaries, "
+                f"{skipped_zero_salary} zero salaries"
+                + (f", {skipped_tournament_filter} tournament filters" if skipped_tournament_filter > 0 else "")
             )
 
         return opt_players
@@ -333,9 +446,18 @@ class LineupOptimizerService:
             var_name = f"player_{player.player_id}"
             player_vars[player.player_id] = pulp.LpVariable(var_name, cat='Binary')
         
-        # Objective: Maximize Smart Score
+        # Objective: Maximize Smart Score + small bonus for using salary cap efficiently
+        # Primary: Smart Score (dominant factor)
+        # Secondary: Salary usage (tiny bonus to encourage spending near cap)
         prob += pulp.lpSum([
             player.smart_score * player_vars[player.player_id]
+            for player in opt_players
+        ])
+        
+        # Add small bonus for salary usage (0.001 per $1000 = 0.05 points for full $50K)
+        # This encourages using the full salary cap without overriding Smart Score optimization
+        prob += pulp.lpSum([
+            (player.salary / 1000) * 0.001 * player_vars[player.player_id]
             for player in opt_players
         ])
         
@@ -424,6 +546,7 @@ class LineupOptimizerService:
         selected_players = []
         total_salary = 0
         total_smart_score = 0.0
+        total_projection = 0.0
         total_ownership = 0.0
         
         for player in opt_players:
@@ -440,6 +563,7 @@ class LineupOptimizerService:
                 })
                 total_salary += player.salary
                 total_smart_score += player.smart_score
+                total_projection += player.projection
                 total_ownership += player.ownership
         
         # Validate lineup
@@ -453,7 +577,7 @@ class LineupOptimizerService:
         if avg_ownership > 1.0:
             avg_ownership = avg_ownership / 100.0
 
-        logger.info(f"Lineup {lineup_number}: {len(selected_players)} players, salary=${total_salary}, score={total_smart_score:.1f}, avg_own={avg_ownership:.3f}")
+        logger.info(f"Lineup {lineup_number}: {len(selected_players)} players, salary=${total_salary}, score={total_smart_score:.1f}, proj={total_projection:.1f}, avg_own={avg_ownership:.3f}")
 
         try:
             return GeneratedLineup(
@@ -461,11 +585,12 @@ class LineupOptimizerService:
                 players=selected_players,
                 total_salary=total_salary,
                 projected_score=total_smart_score,
+                projected_points=total_projection,
                 avg_ownership=avg_ownership,
             )
         except Exception as e:
             logger.error(f"Pydantic validation error creating GeneratedLineup: {e}")
-            logger.error(f"  lineup_number={lineup_number}, players={len(selected_players)}, total_salary={total_salary}, projected_score={total_smart_score}, avg_ownership={avg_ownership}")
+            logger.error(f"  lineup_number={lineup_number}, players={len(selected_players)}, total_salary={total_salary}, projected_score={total_smart_score}, projected_points={total_projection}, avg_ownership={avg_ownership}")
             raise
     
     def _apply_strategy_mode(
@@ -475,18 +600,68 @@ class LineupOptimizerService:
         player_vars: Dict[int, pulp.LpVariable],
         strategy_mode: str,
     ):
-        """Apply strategy mode adjustments to objective function."""
+        """
+        Apply strategy mode adjustments to objective function.
+        
+        Different strategies optimize for different goals:
+        - Balanced: Pure Smart Score optimization
+        - Chalk: Favor high-ownership players (safer, tournament-winning upside)
+        - Contrarian: Favor low-ownership players (differentiation, GPP strategy)
+        """
         if strategy_mode == 'Chalk':
-            # Boost high ownership players
-            # Already handled by Smart Score (ownership penalty is lower)
-            pass
-        elif strategy_mode == 'Contrarian':
-            # Additional penalty for high ownership
-            # Adjust objective to penalize ownership
+            # Boost high ownership players - they're popular for a reason
+            # Add bonus to objective for players with high ownership
             for player in players:
                 if player.ownership > 0.15:  # Above 15% ownership
-                    prob += player_vars[player.player_id] * player.ownership * -100  # Penalty
-        # Balanced: No additional adjustments
+                    # Bonus increases with ownership
+                    ownership_bonus = player.ownership * 2.0  # 2 points per 1% ownership
+                    prob += player_vars[player.player_id] * ownership_bonus
+                    
+        elif strategy_mode == 'Contrarian':
+            # Penalize high ownership players to create unique lineups
+            # This is valuable in GPPs where you need differentiation to win
+            for player in players:
+                if player.ownership > 0.10:  # Above 10% ownership
+                    # Penalty increases exponentially with ownership
+                    ownership_penalty = (player.ownership ** 1.5) * -150
+                    prob += player_vars[player.player_id] * ownership_penalty
+                    
+            # Also boost low-ownership players
+            for player in players:
+                if player.ownership < 0.05:  # Below 5% ownership
+                    # Bonus for low-owned players
+                    contrarian_bonus = (0.05 - player.ownership) * 50
+                    prob += player_vars[player.player_id] * contrarian_bonus
+                    
+        elif strategy_mode == 'Tournament':
+            # Tournament mode: Optimize for ceiling + ownership leverage
+            # Based on research: 47% of winners scored above CEILING
+            # Only 28% of winners were owned 20%+ (mostly RBs)
+            # Target: High Smart Score with low ownership (except RB)
+            
+            for player in players:
+                ownership_pct = player.ownership * 100.0  # Convert to percentage
+                
+                # RB chalk is OK - don't penalize high-owned RBs
+                if player.position == 'RB':
+                    # RBs can be chalk - just optimize Smart Score
+                    continue
+                
+                # For non-RBs: optimize for ownership leverage
+                # Leverage = Smart Score / Ownership (higher is better)
+                if player.ownership > 0.01:  # Avoid division by zero
+                    leverage_score = player.smart_score / player.ownership
+                    # Boost players with high leverage (high Smart Score, low ownership)
+                    leverage_bonus = leverage_score * 0.5  # 0.5 bonus per leverage point
+                    prob += player_vars[player.player_id] * leverage_bonus
+                
+                # Penalize high-owned non-RBs (without ceiling upside)
+                # Research shows only 28% of winners owned 20%+, and most were RBs
+                if ownership_pct >= 20.0:
+                    ownership_penalty = (ownership_pct - 20.0) * -2.0  # -2 per % above 20%
+                    prob += player_vars[player.player_id] * ownership_penalty
+                    
+        # Balanced: No additional adjustments - pure Smart Score optimization
     
     def _add_position_constraints(
         self,
@@ -700,6 +875,120 @@ class LineupOptimizerService:
                 prob += team_a_selected >= has_game_players
                 prob += team_b_selected >= has_game_players
     
+    def _generate_baseline_lineup(
+        self,
+        opt_players: List[PlayerOptimizationData],
+        players_by_position: Dict[str, List[PlayerOptimizationData]],
+        players_by_team: Dict[str, List[PlayerOptimizationData]],
+        game_info: Dict[str, Dict[str, str]],
+        settings: OptimizationSettings,
+        lineup_number: int,
+        optimize_for: str,  # 'smart_score' or 'projection'
+    ) -> Optional[GeneratedLineup]:
+        """
+        Generate a single baseline lineup optimizing for either Smart Score or Projection.
+        
+        No diversity penalties, no overlap constraints - pure optimization.
+        
+        Args:
+            lineup_number: -1 for Smart Score baseline, -2 for Projection baseline
+            optimize_for: 'smart_score' or 'projection'
+        """
+        prob = pulp.LpProblem(f"Baseline_{optimize_for}", pulp.LpMaximize)
+        
+        # Create binary variables for each player
+        player_vars = {}
+        for player in opt_players:
+            var_name = f"player_{player.player_id}"
+            player_vars[player.player_id] = pulp.LpVariable(var_name, cat='Binary')
+        
+        # Objective: Maximize Smart Score OR Projection (no penalties, no bonuses)
+        if optimize_for == 'smart_score':
+            prob += pulp.lpSum([
+                player.smart_score * player_vars[player.player_id]
+                for player in opt_players
+            ])
+        else:  # 'projection'
+            prob += pulp.lpSum([
+                player.projection * player_vars[player.player_id]
+                for player in opt_players
+            ])
+        
+        # Position constraints (same as regular lineups)
+        self._add_position_constraints(prob, players_by_position, player_vars, settings)
+        
+        # Salary constraint (DraftKings cap is always 50000)
+        salary_cap = 50000
+        prob += pulp.lpSum([
+            player.salary * player_vars[player.player_id]
+            for player in opt_players
+        ]) <= salary_cap
+        
+        # Team constraints (optional - still apply for validity)
+        if settings.max_players_per_team:
+            self._add_team_constraints(prob, players_by_team, player_vars, settings)
+        
+        # Game constraints (optional)
+        if settings.max_players_per_game:
+            self._add_game_constraints(prob, opt_players, game_info, player_vars, settings)
+        
+        # NO stacking rules for baselines (they're unconstrained)
+        # NO diversity penalties for baselines
+        
+        # Solve
+        prob.solve(pulp.PULP_CBC_CMD(msg=0))
+        
+        if prob.status != pulp.LpStatusOptimal:
+            logger.warning(f"Baseline {optimize_for} optimization failed with status: {pulp.LpStatus[prob.status]}")
+            return None
+        
+        # Extract selected players
+        selected_players = [
+            player for player in opt_players
+            if player_vars[player.player_id].varValue == 1
+        ]
+        
+        if not selected_players:
+            logger.warning(f"Baseline {optimize_for}: No players selected")
+            return None
+        
+        # Calculate totals
+        total_salary = sum(p.salary for p in selected_players)
+        total_smart_score = sum(p.smart_score for p in selected_players)
+        total_projection = sum(p.projection for p in selected_players)
+        avg_ownership = sum(p.ownership for p in selected_players) / len(selected_players)
+        
+        # Convert ownership from percentage (0-100) to decimal (0-1) if needed
+        if avg_ownership > 1.0:
+            avg_ownership = avg_ownership / 100.0
+        
+        # Convert to player dicts
+        player_dicts = [
+            {
+                'player_key': p.player_key,
+                'name': p.name,
+                'position': p.position,
+                'team': p.team,
+                'salary': p.salary,
+                'projection': p.projection,
+                'smart_score': p.smart_score,
+                'ownership': p.ownership,
+            }
+            for p in selected_players
+        ]
+        
+        # Create lineup with special lineup_number
+        lineup = GeneratedLineup(
+            lineup_number=lineup_number,  # -1 or -2 for baselines
+            players=player_dicts,
+            total_salary=total_salary,
+            projected_score=total_smart_score,
+            projected_points=total_projection,
+            avg_ownership=avg_ownership,
+        )
+        
+        return lineup
+    
     def _add_diversity_penalty(
         self,
         prob: pulp.LpProblem,
@@ -707,7 +996,12 @@ class LineupOptimizerService:
         player_vars: Dict[int, pulp.LpVariable],
         previous_lineups: List[GeneratedLineup],
     ):
-        """Add penalty for overlapping with previous lineups."""
+        """
+        Add penalty for overlapping with previous lineups to ensure uniqueness.
+        
+        This penalizes players who appeared in previous lineups, forcing the optimizer
+        to find different combinations while still maximizing Smart Score.
+        """
         # Count how many times each player appeared in previous lineups
         player_overlap_count: Dict[int, int] = defaultdict(int)
         
@@ -718,25 +1012,38 @@ class LineupOptimizerService:
                         player_overlap_count[player.player_id] += 1
                         break
         
-        # Adjust objective function to penalize overlap
-        # We'll subtract a small penalty from players already used
-        # Note: This modifies the objective, so we need to recreate it
-        # For now, we'll add a constraint that penalizes overlap
-        # This is a soft constraint handled by reducing the smart_score in the objective
-        overlap_penalty = 0.5  # Penalty per previous appearance
+        # Apply diversity penalty by reducing the effective smart score
+        # Use a GENTLE penalty that encourages variety without sacrificing optimization
+        # Base penalty: 0.5 points per appearance (much lighter than before)
+        base_penalty = 0.5
         
         for player in players:
             overlap_count = player_overlap_count.get(player.player_id, 0)
             if overlap_count > 0:
-                # Reduce effective smart_score by penalty
-                # This is handled by adjusting the objective coefficient
-                # We subtract overlap_penalty * overlap_count from the contribution
-                # Since we can't modify after creation, we'll skip this for now
-                # and handle diversity in the next iteration's objective
-                pass
+                # Gentle escalating penalty: 0.5 * (overlap_count ^ 1.1)
+                # This encourages variety but doesn't force bad picks
+                penalty = base_penalty * (overlap_count ** 1.1)
+                
+                # Subtract penalty from this player's contribution to the objective
+                prob += player_vars[player.player_id] * (-penalty)
         
-        # Note: For full diversity penalty, we'd need to recreate the objective
-        # For MVP, we'll rely on the iterative generation naturally creating diversity
+        # Hard constraint: limit max overlap with any single previous lineup
+        # Relaxed to 7 out of 9 (was 6) - allows more optimization while ensuring difference
+        max_overlap_per_lineup = 7  # Maximum 7 out of 9 players can overlap with any previous lineup
+        
+        for prev_lineup in previous_lineups:
+            prev_player_ids = set()
+            for player_data in prev_lineup.players:
+                for player in players:
+                    if player.player_key == player_data['player_key']:
+                        prev_player_ids.add(player.player_id)
+                        break
+            
+            # Constraint: sum of overlapping players <= max_overlap_per_lineup
+            if prev_player_ids:
+                overlap_vars = [player_vars[pid] for pid in prev_player_ids if pid in player_vars]
+                if overlap_vars:
+                    prob += pulp.lpSum(overlap_vars) <= max_overlap_per_lineup
     
     def _validate_lineup(
         self,

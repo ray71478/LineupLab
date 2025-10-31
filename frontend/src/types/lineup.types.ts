@@ -16,7 +16,7 @@ export interface StackingRules {
 
 export interface OptimizationSettings {
   num_lineups: number;
-  strategy_mode: 'Chalk' | 'Balanced' | 'Contrarian';
+  strategy_mode: 'Chalk' | 'Balanced' | 'Contrarian' | 'Tournament';
   max_players_per_team: number;
   max_players_per_game: number;
   player_exposure_limits?: Record<string, PlayerExposureLimits>;
@@ -36,10 +36,11 @@ export interface LineupPlayer {
 }
 
 export interface GeneratedLineup {
-  lineup_number: number;
+  lineup_number: number; // 1-N for regular lineups, -1 for "Best Smart Score", -2 for "Best Projection"
   players: LineupPlayer[];
   total_salary: number;
   projected_score: number;
+  projected_points: number;
   avg_ownership: number;
 }
 

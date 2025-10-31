@@ -22,11 +22,11 @@ class StackingRules(BaseModel):
     """Schema for stacking rules."""
     
     qb_wr_stack_enabled: bool = Field(
-        default=False,
+        default=True,  # Default ON for tournaments
         description="Require QB + at least 1 WR from same team"
     )
     bring_back_enabled: bool = Field(
-        default=False,
+        default=True,  # Default ON for tournaments
         description="Require bring-back (opposing team player) when stacking"
     )
     
@@ -43,9 +43,9 @@ class OptimizationSettings(BaseModel):
         le=20,
         description="Number of lineups to generate"
     )
-    strategy_mode: Literal['Chalk', 'Balanced', 'Contrarian'] = Field(
-        default='Balanced',
-        description="Strategy mode: Chalk (high ownership), Balanced (mixed), Contrarian (low ownership)"
+    strategy_mode: Literal['Chalk', 'Balanced', 'Contrarian', 'Tournament'] = Field(
+        default='Tournament',
+        description="Strategy mode: Chalk (high ownership), Balanced (mixed), Contrarian (low ownership), Tournament (ceiling + ownership leverage)"
     )
     max_players_per_team: int = Field(
         default=4,
@@ -68,9 +68,9 @@ class OptimizationSettings(BaseModel):
         description="Stacking rules configuration"
     )
     smart_score_threshold: Optional[float] = Field(
-        default=None,
+        default=5.0,
         ge=0,
-        description="Minimum Smart Score threshold (exclude players below)"
+        description="Minimum Smart Score threshold (exclude players below). Default 5.0 filters out low-quality players."
     )
     
     class Config:
@@ -96,10 +96,11 @@ class LineupPlayer(BaseModel):
 class GeneratedLineup(BaseModel):
     """Schema for a generated lineup."""
     
-    lineup_number: int = Field(..., ge=1, description="Lineup number (1-N)")
+    lineup_number: int = Field(..., description="Lineup number (1-N, or -1/-2 for baselines)")
     players: List[Dict[str, Any]] = Field(..., description="List of players in lineup")
     total_salary: int = Field(..., ge=0, le=50000, description="Total salary")
     projected_score: float = Field(..., ge=0, description="Total Smart Score")
+    projected_points: float = Field(..., ge=0, description="Total projected fantasy points")
     avg_ownership: float = Field(..., ge=0, le=1, description="Average ownership %")
     
     class Config:

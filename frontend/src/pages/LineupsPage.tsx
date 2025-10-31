@@ -44,12 +44,12 @@ const LineupDisplay = React.lazy(() =>
 
 const DEFAULT_SETTINGS: OptimizationSettings = {
   num_lineups: 10,
-  strategy_mode: 'Balanced',
+  strategy_mode: 'Tournament',  // Default to Tournament mode (ceiling + ownership leverage)
   max_players_per_team: 4,
   max_players_per_game: 5,
   stacking_rules: {
-    qb_wr_stack_enabled: false,
-    bring_back_enabled: false,
+    qb_wr_stack_enabled: true,  // Default ON for tournaments
+    bring_back_enabled: true,    // Default ON for tournaments
   },
 };
 
