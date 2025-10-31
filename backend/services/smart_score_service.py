@@ -935,12 +935,14 @@ class SmartScoreService:
                 )
                 salary_efficiency_trend = efficiency.get("trend")
 
-                # Usage warnings
-                if current_week_num:
+                # Usage warnings (only for RB, WR, TE - not QB)
+                if current_week_num and player_data.position in ("RB", "WR", "TE"):
                     usage = self._insights_service.get_usage_pattern_warnings(
                         player_data.player_key, season, current_week_num
                     )
                     usage_warnings = usage.get("warnings") if usage.get("has_warning") else None
+                else:
+                    usage_warnings = None
 
                 # Stack partners (metadata only - does NOT affect Smart Score)
                 # Only for QB, WR, TE positions
@@ -962,17 +964,13 @@ class SmartScoreService:
                         if not stack_partners:
                             stack_partners = None
 
-                # Opponent matchup history (optional - need to get opponent)
-                # For now, skip if we don't have opponent info readily available
-                # TODO: Enhance to lookup opponent from NFL schedule
-
-                # Vegas context data
-                implied_team_total = None
-                over_under = None
+                # Opponent matchup history - lookup opponent from vegas_lines
+                opponent = None
                 try:
+                    # Get opponent from vegas_lines table (same query we use for ITT)
                     vegas_result = self.session.execute(
                         text("""
-                            SELECT implied_team_total, over_under
+                            SELECT opponent, implied_team_total, over_under
                             FROM vegas_lines
                             WHERE week_id = :week_id AND team = :team
                             LIMIT 1
@@ -981,9 +979,23 @@ class SmartScoreService:
                     ).fetchone()
 
                     if vegas_result:
-                        implied_team_total, over_under = vegas_result
+                        opponent, implied_team_total, over_under = vegas_result
+                        
+                        # If we have opponent data, calculate historical matchup average
+                        if opponent:
+                            matchup_history = self._insights_service.get_opponent_matchup_history(
+                                player_data.player_key,
+                                opponent,
+                                season
+                            )
+                            opponent_matchup_avg = matchup_history.get("avg_points")
+                    else:
+                        implied_team_total = None
+                        over_under = None
                 except Exception as e:
-                    logger.debug(f"Could not fetch Vegas data for {player_data.name}: {e}")
+                    logger.debug(f"Could not fetch Vegas/opponent data for {player_data.name}: {e}")
+                    implied_team_total = None
+                    over_under = None
 
             # Create response
             player_response = PlayerScoreResponse(

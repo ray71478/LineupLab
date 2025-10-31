@@ -47,7 +47,7 @@ import { ScoreDeltaIndicator } from './ScoreDeltaIndicator';
 import { RegressionRiskBadge } from './RegressionRiskBadge';
 import { MissingDataIndicator } from './MissingDataIndicator';
 import { UsageWarningBadge } from './UsageWarningBadge';
-import { StackPotentialBadge } from './StackPotentialBadge';
+// import { StackPotentialBadge } from './StackPotentialBadge'; // Hidden - not used in Smart Score engine
 
 export interface SmartScoreTableProps {
   players: PlayerScoreResponse[];
@@ -154,25 +154,26 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
           />
         ),
       },
-      {
-        id: 'stack_potential',
-        accessorKey: 'stack_partners',
-        header: 'Stack',
-        size: 80,
-        cell: ({ row }) => {
-          const player = row.original;
-          // Only show for QB, WR, TE
-          if (!['QB', 'WR', 'TE'].includes(player.position)) {
-            return null;
-          }
-          return (
-            <StackPotentialBadge
-              stackPartners={player.stack_partners}
-              position={player.position}
-            />
-          );
-        },
-      },
+      // Stack column hidden - not useful for Smart Score engine (stacking is a roster construction consideration)
+      // {
+      //   id: 'stack_potential',
+      //   accessorKey: 'stack_partners',
+      //   header: 'Stack',
+      //   size: 80,
+      //   cell: ({ row }) => {
+      //     const player = row.original;
+      //     // Only show for QB, WR, TE
+      //     if (!['QB', 'WR', 'TE'].includes(player.position)) {
+      //       return null;
+      //     }
+      //     return (
+      //       <StackPotentialBadge
+      //         stackPartners={player.stack_partners}
+      //         position={player.position}
+      //       />
+      //     );
+      //   },
+      // },
       {
         id: 'salary',
         accessorKey: 'salary',
@@ -363,6 +364,14 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         size: 70,
         cell: ({ row }) => {
           const player = row.original;
+          // Only show usage warnings for RB, WR, TE - not QB
+          if (player.position === 'QB') {
+            return (
+              <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                -
+              </Typography>
+            );
+          }
           return (
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <UsageWarningBadge warnings={player.usage_warnings} />

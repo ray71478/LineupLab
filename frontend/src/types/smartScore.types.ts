@@ -118,5 +118,23 @@ export interface ScoreChange {
   newScore: number;
   delta: number;
   isTopChange: boolean;
+  // Factor breakdown changes
+  factorChanges?: {
+    W1?: { previous: number; current: number; delta: number };
+    W2?: { previous: number; current: number; delta: number };
+    W3?: { previous: number; current: number; delta: number };
+    W4?: { previous: number; current: number; delta: number };
+    W5?: { previous: number; current: number; delta: number };
+    W6?: { previous: number; current: number; delta: number };
+    W7?: { previous: number; current: number; delta: number };
+    W8?: { previous: number; current: number; delta: number };
+  };
+  // Player data for context (ownership, etc.)
+  playerData?: {
+    ownership?: number | null;
+    projection?: number | null;
+    salary?: number;
+    position?: string;
+  };
 }
 

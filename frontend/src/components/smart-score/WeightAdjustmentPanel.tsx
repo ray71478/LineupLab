@@ -97,6 +97,15 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
       [key]: value,
     };
     setLocalWeights(updated);
+    // Don't call onWeightsChange here - it will be called on onChangeCommitted
+  };
+
+  const handleWeightChangeCommitted = (key: keyof WeightProfile, value: number) => {
+    const updated = {
+      ...localWeights,
+      [key]: value,
+    };
+    setLocalWeights(updated);
     onWeightsChange?.(updated);
   };
 
@@ -236,6 +245,11 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
                   onChange={(_, value) => {
                     if (!isDisabled) {
                       handleWeightChange(key, value as number);
+                    }
+                  }}
+                  onChangeCommitted={(_, value) => {
+                    if (!isDisabled) {
+                      handleWeightChangeCommitted(key, value as number);
                     }
                   }}
                   disabled={isDisabled}
