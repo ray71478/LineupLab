@@ -26,7 +26,9 @@ import {
   useTheme,
   useMediaQuery,
   Grid,
+  Button,
 } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import { useWeekStore } from '../store/weekStore';
 import { useSmartScore, useWeightProfile, useScoreSnapshot } from '../hooks';
 import type { PlayerScoreResponse, WeightProfile, ScoreConfig } from '../types/smartScore.types';
@@ -40,6 +42,7 @@ export const SmartScorePage: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const isTablet = useMediaQuery(theme.breakpoints.between('md', 'lg'));
+  const navigate = useNavigate();
 
   const currentWeekNumber = useWeekStore((state) => state.currentWeek);
   const getCurrentWeekData = useWeekStore((state) => state.getCurrentWeekData);
@@ -299,13 +302,27 @@ export const SmartScorePage: React.FC = () => {
 
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 2, md: 4 } }}>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
-          Smart Score Engine
-        </Typography>
-        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          Week {currentWeek.week_number} - {currentWeek.season}
-        </Typography>
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
+            Smart Score Engine
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            Week {currentWeek.week_number} - {currentWeek.season}
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          onClick={() => navigate('/player-selection')}
+          sx={{
+            backgroundColor: '#ff6b35',
+            '&:hover': {
+              backgroundColor: '#e55a25',
+            },
+          }}
+        >
+          Select Players for Lineups
+        </Button>
       </Box>
 
       {error && (

@@ -10,7 +10,7 @@ const NavigationMenu: React.FC = () => {
 
   const navLinks = [
     { label: 'Smart Score', path: '/smart-score' },
-    { label: 'Lineups', path: '/lineups', disabled: true },
+    { label: 'Lineups', path: '/lineups' },
   ]
 
   return (
@@ -69,6 +69,7 @@ import { useCurrentWeek } from '@/hooks/useCurrentWeek'
 const HomePage = React.lazy(() => import('./pages/HomePage'))
 const PlayersPage = React.lazy(() => import('./pages/PlayersPage'))
 const SmartScorePage = React.lazy(() => import('./pages/SmartScorePage'))
+const PlayerSelectionPage = React.lazy(() => import('./pages/PlayerSelectionPage'))
 const LineupsPage = React.lazy(() => import('./pages/LineupsPage'))
 const NotFoundPage = React.lazy(() => import('./pages/NotFoundPage'))
 
@@ -171,6 +172,7 @@ function App() {
           {/* Main routes */}
           <Route path="/players" element={<PlayersPage />} />
           <Route path="/smart-score" element={<SmartScorePage />} />
+          <Route path="/player-selection" element={<PlayerSelectionPage />} />
           <Route path="/lineups" element={<LineupsPage />} />
 
           {/* Legacy redirect */}

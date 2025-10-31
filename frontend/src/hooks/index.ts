@@ -40,3 +40,6 @@ export type { UseWeightProfileReturn } from './useWeightProfile';
 
 export { useScoreSnapshot } from './useScoreSnapshot';
 export type { UseScoreSnapshotReturn } from './useScoreSnapshot';
+
+export { useLineups } from './useLineups';
+export type { UseLineupsReturn } from './useLineups';

@@ -256,22 +256,6 @@ export const WeekSelector: React.FC<WeekSelectorProps> = ({
                       />
                     </Box>
                   )}
-
-                  {week.is_locked && (
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        color: '#666666',
-                        fontSize: '0.6875rem',
-                        marginLeft: 'auto',
-                        fontWeight: 500,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.05em',
-                      }}
-                    >
-                      locked
-                    </Typography>
-                  )}
                 </Box>
               </Tooltip>
             </MenuItem>

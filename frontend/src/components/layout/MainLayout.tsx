@@ -18,7 +18,7 @@ import {
   Typography,
   alpha,
 } from '@mui/material';
-import ScienceIcon from '@mui/icons-material/Science';
+import { LineupLabIcon } from './LineupLabIcon';
 
 export interface MainLayoutProps {
   children?: ReactNode;
@@ -103,14 +103,27 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
                     alignItems: 'center',
                     justifyContent: 'center',
                     transition: 'all 0.2s ease',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    '&::before': {
+                      content: '""',
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      background: `linear-gradient(135deg, ${alpha('#ff6b35', 0.15)} 0%, transparent 100%)`,
+                      pointerEvents: 'none',
+                    },
+                    '&:hover': {
+                      borderColor: alpha('#ff6b35', 0.4),
+                      backgroundColor: alpha('#ff6b35', 0.15),
+                      transform: 'translateY(-1px)',
+                      boxShadow: `0 4px 12px ${alpha('#ff6b35', 0.2)}`,
+                    },
                   }}
                 >
-                  <ScienceIcon
-                    sx={{
-                      fontSize: 20,
-                      color: '#ff6b35',
-                    }}
-                  />
+                  <LineupLabIcon size={22} color="#ff6b35" />
                 </Box>
                 <Typography
                   variant="h6"

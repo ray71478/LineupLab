@@ -52,6 +52,7 @@ export const HomePage: React.FC = () => {
               zIndex: 1,
               textAlign: 'center',
               px: { xs: 2, sm: 4, md: 6 },
+              pt: { xs: 2, sm: 4, md: 6 },
             }}
           >
             {/* Main Heading - Dynamic Typography */}
@@ -59,13 +60,11 @@ export const HomePage: React.FC = () => {
               <Typography
                 variant="h1"
                 sx={{
-                  fontSize: { xs: '2.75rem', sm: '4rem', md: '5.5rem' },
+                  fontSize: { xs: '3rem', sm: '4.5rem', md: '6rem' },
                   fontWeight: 900,
-                  letterSpacing: '-0.03em',
-                  lineHeight: 1.1,
-                  color: '#ffffff',
-                  mb: 2,
-                  // Add subtle animation on load
+                  letterSpacing: '-0.04em',
+                  lineHeight: 1.05,
+                  mb: 1.5,
                   animation: 'fadeInUp 0.8s ease-out 0.2s both',
                   '@keyframes fadeInUp': {
                     from: {
@@ -79,31 +78,67 @@ export const HomePage: React.FC = () => {
                   },
                 }}
               >
-                {/* Split heading for visual interest */}
-                <span>Build Winning</span>
-                <br />
-                <span
-                  style={{
-                    background: 'linear-gradient(135deg, #ff6b35 0%, #ffa05c 100%)',
+                {/* Split heading with enhanced effects */}
+                <Box
+                  component="span"
+                  sx={{
+                    display: 'block',
+                    color: '#ffffff',
+                    position: 'relative',
+                    textShadow: '0 0 30px rgba(255, 107, 53, 0.3)',
+                    mb: 0.5,
+                  }}
+                >
+                  Build Winning
+                </Box>
+                <Box
+                  component="span"
+                  sx={{
+                    display: 'block',
+                    position: 'relative',
+                    background: 'linear-gradient(135deg, #ff6b35 0%, #ffa05c 50%, #ff6b35 100%)',
+                    backgroundSize: '200% 200%',
                     backgroundClip: 'text',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
+                    animation: 'gradientShift 3s ease infinite',
+                    '@keyframes gradientShift': {
+                      '0%, 100%': {
+                        backgroundPosition: '0% 50%',
+                      },
+                      '50%': {
+                        backgroundPosition: '100% 50%',
+                      },
+                    },
+                    textShadow: '0 0 40px rgba(255, 107, 53, 0.4)',
+                    '&::after': {
+                      content: '""',
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      background: 'linear-gradient(135deg, rgba(255, 107, 53, 0.3) 0%, transparent 50%)',
+                      borderRadius: '4px',
+                      filter: 'blur(20px)',
+                      zIndex: -1,
+                    },
                   }}
                 >
                   DFS Lineups
-                </span>
+                </Box>
               </Typography>
 
-              {/* Subtitle with better visual hierarchy */}
+              {/* Enhanced Subtitle */}
               <Typography
                 variant="body1"
                 sx={{
-                  fontSize: { xs: '1.125rem', sm: '1.375rem', md: '1.5rem' },
+                  fontSize: { xs: '1.125rem', sm: '1.375rem', md: '1.625rem' },
                   fontWeight: 400,
-                  color: '#a0a0a0',
-                  maxWidth: '800px',
+                  color: '#b0b0b0',
+                  maxWidth: '720px',
                   mx: 'auto',
-                  lineHeight: 1.7,
+                  lineHeight: 1.6,
                   mb: { xs: 4, sm: 6, md: 7 },
                   animation: 'fadeInUp 0.8s ease-out 0.4s both',
                   '@keyframes fadeInUp': {
@@ -116,9 +151,62 @@ export const HomePage: React.FC = () => {
                       transform: 'translateY(0)',
                     },
                   },
+                  position: 'relative',
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    left: '50%',
+                    top: -20,
+                    transform: 'translateX(-50%)',
+                    width: '60px',
+                    height: '2px',
+                    background: 'linear-gradient(90deg, transparent, #ff6b35, transparent)',
+                    borderRadius: '2px',
+                  },
                 }}
               >
-                Leverage AI-powered insights and real-time data analysis to optimize your fantasy sports strategy
+                Optimize your fantasy strategy with{' '}
+                <Box
+                  component="span"
+                  sx={{
+                    color: '#ff6b35',
+                    fontWeight: 600,
+                    position: 'relative',
+                    '&::after': {
+                      content: '""',
+                      position: 'absolute',
+                      bottom: 2,
+                      left: 0,
+                      right: 0,
+                      height: '2px',
+                      background: `linear-gradient(90deg, transparent, ${alpha('#ff6b35', 0.4)}, transparent)`,
+                      borderRadius: '1px',
+                    },
+                  }}
+                >
+                  real-time data
+                </Box>
+                {' '}analysis and{' '}
+                <Box
+                  component="span"
+                  sx={{
+                    color: '#ff6b35',
+                    fontWeight: 600,
+                    position: 'relative',
+                    '&::after': {
+                      content: '""',
+                      position: 'absolute',
+                      bottom: 2,
+                      left: 0,
+                      right: 0,
+                      height: '2px',
+                      background: `linear-gradient(90deg, transparent, ${alpha('#ff6b35', 0.4)}, transparent)`,
+                      borderRadius: '1px',
+                    },
+                  }}
+                >
+                  intelligent lineup generation
+                </Box>
               </Typography>
             </Box>
 

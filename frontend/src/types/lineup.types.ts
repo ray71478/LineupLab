@@ -1,0 +1,83 @@
+/**
+ * Lineup Optimizer Types
+ *
+ * TypeScript types for lineup generation and management
+ */
+
+export interface PlayerExposureLimits {
+  min?: number;
+  max?: number;
+}
+
+export interface StackingRules {
+  qb_wr_stack_enabled: boolean;
+  bring_back_enabled: boolean;
+}
+
+export interface OptimizationSettings {
+  num_lineups: number;
+  strategy_mode: 'Chalk' | 'Balanced' | 'Contrarian';
+  max_players_per_team: number;
+  max_players_per_game: number;
+  player_exposure_limits?: Record<string, PlayerExposureLimits>;
+  stacking_rules?: StackingRules;
+  smart_score_threshold?: number;
+}
+
+export interface LineupPlayer {
+  position: string;
+  player_key: string;
+  name: string;
+  team: string;
+  salary: number;
+  smart_score: number;
+  ownership: number;
+  projection?: number;
+}
+
+export interface GeneratedLineup {
+  lineup_number: number;
+  players: LineupPlayer[];
+  total_salary: number;
+  projected_score: number;
+  avg_ownership: number;
+}
+
+export interface LineupOptimizationRequest {
+  week_id: number;
+  settings: OptimizationSettings;
+  selected_player_ids?: number[];
+}
+
+export interface LineupOptimizationResponse {
+  week_id: number;
+  lineups: GeneratedLineup[];
+  settings: OptimizationSettings;
+  generation_time_ms: number;
+}
+
+export interface SaveLineupsRequest {
+  week_id: number;
+  lineups: GeneratedLineup[];
+  weight_profile_id?: number;
+  strategy_mode?: string;
+}
+
+export interface SaveLineupsResponse {
+  saved_count: number;
+  lineups: SavedLineup[];
+}
+
+export interface SavedLineup {
+  id: number;
+  week_id: number;
+  lineup_number: number;
+  players: LineupPlayer[];
+  total_salary: number;
+  projected_score: number;
+  avg_ownership?: number;
+  strategy_mode: string;
+  weight_profile_id?: number;
+  created_at: string;
+}
+
