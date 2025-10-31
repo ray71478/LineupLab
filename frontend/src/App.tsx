@@ -57,7 +57,7 @@ const NavigationMenu: React.FC = () => {
 import React, { Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { Box, CircularProgress, Button, Stack } from '@mui/material'
-import MainLayout from '@/components/layout/MainLayout'
+import MainLayout from './components/layout/MainLayout'
 import ImportDataButton from '@/components/import/ImportDataButton'
 import { RefreshMySportsFeedsButton } from '@/components/refresh/RefreshMySportsFeedsButton'
 import WeekSelector from '@/components/layout/WeekSelector'

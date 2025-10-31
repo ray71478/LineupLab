@@ -249,6 +249,10 @@ export const SmartScorePage: React.FC = () => {
     updateWeights(weights);
   };
 
+  const handleConfigChange = (config: ScoreConfig) => {
+    updateConfig(config);
+  };
+
 
   const isLoading = scoresLoading || profilesLoading || isCalculating;
   const error = scoresError || profilesError;
@@ -306,7 +310,6 @@ export const SmartScorePage: React.FC = () => {
                   onReset={handleReset}
                   onWeightsChange={handleWeightsChange}
                   onConfigChange={handleConfigChange}
-                  onProfileChange={handleProfileChange}
                   isCalculating={isCalculating}
                 />
               </React.Suspense>
