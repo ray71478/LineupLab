@@ -189,75 +189,73 @@ export const LineupsPage: React.FC = () => {
           </Alert>
         )}
 
-        <Grid container spacing={3}>
-          {/* Configuration Panel */}
-          <Grid item xs={12} md={3}>
+        {/* Configuration Panel - Stacked vertically on top */}
+        <Box sx={{ mb: 3 }}>
+          <Box sx={{ mb: 2 }}>
             <React.Suspense fallback={<CircularProgress />}>
               <LineupConfigurationPanel settings={settings} onSettingsChange={setSettings} />
             </React.Suspense>
+          </Box>
 
-            {/* Generate Button */}
-            <Box sx={{ mt: 2 }}>
+          {/* Generate Button */}
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <Button
+              variant="contained"
+              onClick={handleGenerate}
+              disabled={isGenerating || (selectedPlayers !== null && selectedPlayers.length === 0)}
+              sx={{
+                backgroundColor: '#ff6b35',
+                py: 1.5,
+                px: 4,
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                '&:hover': {
+                  backgroundColor: '#e55a25',
+                },
+                '&:disabled': {
+                  backgroundColor: '#666',
+                },
+              }}
+            >
+              {isGenerating ? (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CircularProgress size={16} sx={{ color: '#fff' }} />
+                  Generating...
+                </Box>
+              ) : (
+                'Generate Lineups'
+              )}
+            </Button>
+            {selectedPlayers === null && (
               <Button
-                variant="contained"
-                fullWidth
-                onClick={handleGenerate}
-                disabled={isGenerating || (selectedPlayers !== null && selectedPlayers.length === 0)}
+                variant="outlined"
+                onClick={() => navigate('/player-selection')}
                 sx={{
-                  backgroundColor: '#ff6b35',
-                  py: 1.5,
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
+                  borderColor: '#ff6b35',
+                  color: '#ff6b35',
                   '&:hover': {
-                    backgroundColor: '#e55a25',
-                  },
-                  '&:disabled': {
-                    backgroundColor: '#666',
+                    borderColor: '#ff6b35',
+                    backgroundColor: 'rgba(255, 107, 53, 0.1)',
                   },
                 }}
               >
-                {isGenerating ? (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <CircularProgress size={16} sx={{ color: '#fff' }} />
-                    Generating...
-                  </Box>
-                ) : (
-                  'Generate Lineups'
-                )}
+                Select Players First
               </Button>
-              {selectedPlayers === null && (
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  onClick={() => navigate('/player-selection')}
-                  sx={{
-                    mt: 1,
-                    borderColor: '#ff6b35',
-                    color: '#ff6b35',
-                    '&:hover': {
-                      borderColor: '#ff6b35',
-                      backgroundColor: 'rgba(255, 107, 53, 0.1)',
-                    },
-                  }}
-                >
-                  Select Players First
-                </Button>
-              )}
-            </Box>
-          </Grid>
+            )}
+          </Box>
+        </Box>
 
-          {/* Lineups Display */}
-          <Grid item xs={12} md={9}>
-            <React.Suspense fallback={<CircularProgress />}>
-              <LineupDisplay
-                lineups={generatedLineups}
-                isLoading={isGenerating}
-                onSaveSelected={handleSaveSelected}
-                isSaving={isSaving}
-              />
-            </React.Suspense>
-          </Grid>
-        </Grid>
+        {/* Lineups Display - Full width below */}
+        <Box>
+          <React.Suspense fallback={<CircularProgress />}>
+            <LineupDisplay
+              lineups={generatedLineups}
+              isLoading={isGenerating}
+              onSaveSelected={handleSaveSelected}
+              isSaving={isSaving}
+            />
+          </React.Suspense>
+        </Box>
       </Box>
     </Container>
   );

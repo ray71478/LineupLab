@@ -132,6 +132,7 @@ export const LineupConfigurationPanel: React.FC<LineupConfigurationPanelProps> =
               <MenuItem value="Chalk" sx={{ fontSize: '0.875rem' }}>Chalk (High Ownership)</MenuItem>
               <MenuItem value="Balanced" sx={{ fontSize: '0.875rem' }}>Balanced</MenuItem>
               <MenuItem value="Contrarian" sx={{ fontSize: '0.875rem' }}>Contrarian (Low Ownership)</MenuItem>
+              <MenuItem value="Tournament" sx={{ fontSize: '0.875rem' }}>Tournament (Ceiling + Leverage)</MenuItem>
             </Select>
           </FormControl>
 

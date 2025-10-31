@@ -106,10 +106,33 @@ class LineupOptimizerService:
         # Convert to optimization data
         opt_players = self._prepare_players(filtered_players, strategy_mode=settings.strategy_mode)
         
+        # Log position breakdown BEFORE filtering
+        pre_filter_positions = {}
+        for player in filtered_players:
+            if player.smart_score is not None and player.smart_score > 0:
+                pre_filter_positions[player.position] = pre_filter_positions.get(player.position, 0) + 1
+        
+        logger.info(f"Position breakdown BEFORE Tournament filters: {pre_filter_positions}")
+        
         logger.info(
             f"After preparing players (removing null Smart Scores): {len(opt_players)} players "
             f"(from {len(filtered_players)} filtered)"
         )
+        
+        # Log position breakdown AFTER filtering
+        post_filter_positions = {}
+        for player in opt_players:
+            post_filter_positions[player.position] = post_filter_positions.get(player.position, 0) + 1
+        
+        logger.info(f"Position breakdown AFTER Tournament filters: {post_filter_positions}")
+        
+        # Show which positions lost players
+        for pos in ['QB', 'RB', 'WR', 'TE', 'DST']:
+            before = pre_filter_positions.get(pos, 0)
+            after = post_filter_positions.get(pos, 0)
+            lost = before - after
+            if lost > 0:
+                logger.warning(f"  {pos}: {before} → {after} (lost {lost} players to Tournament filters)")
         
         # Group players by position and team for constraints
         players_by_position = self._group_by_position(opt_players)
@@ -307,6 +330,10 @@ class LineupOptimizerService:
         skipped_zero_salary = 0
         skipped_no_projection = 0
         skipped_tournament_filter = 0
+        
+        # Track filtered players by reason for debugging
+        filtered_by_itt = []
+        filtered_by_ownership = []
 
         for player in players:
             # Skip players with null smart score
@@ -338,18 +365,54 @@ class LineupOptimizerService:
                 continue
 
             # Tournament mode filters (based on research)
+            # NOTE: These are VERY SOFT filters - only filter obviously bad players
+            # The optimization bonuses will handle the preference for ITT > 18.5 and ownership < 20%
+            # We don't want to filter out players if it would make lineups impossible
             if strategy_mode == 'Tournament':
-                # Filter by ITT > 18.5 (93% of top performers)
-                if player.implied_team_total is not None and player.implied_team_total <= 18.5:
+                # Ownership conversion: Handle both decimal (0-1) and percentage (0-100) formats
+                ownership_raw = player.ownership or 0.0
+                if ownership_raw > 1.0:
+                    # Already a percentage (0-100), use as-is
+                    ownership_pct = ownership_raw
+                else:
+                    # Decimal format (0-1), convert to percentage
+                    ownership_pct = ownership_raw * 100.0
+                
+                # Very soft ITT filter: Only filter if ITT is extremely low (< 12) to avoid obviously bad teams
+                # Allow null ITT values through (they'll be penalized in optimization but not excluded)
+                if player.implied_team_total is not None and player.implied_team_total < 12.0:
                     skipped_tournament_filter += 1
-                    logger.debug(f"Player {player.name} ({player.position}) filtered: ITT {player.implied_team_total} <= 18.5")
+                    filtered_by_itt.append({
+                        'name': player.name,
+                        'position': player.position,
+                        'team': player.team,
+                        'itt': player.implied_team_total,
+                        'ownership': ownership_pct,
+                        'smart_score': player.smart_score,
+                    })
+                    logger.warning(
+                        f"TOURNAMENT FILTER: {player.name} ({player.position}, {player.team}) - "
+                        f"ITT {player.implied_team_total} < 12.0, Ownership: {ownership_pct:.1f}%, Smart Score: {player.smart_score:.1f}"
+                    )
                     continue
                 
-                # Ownership filter: RB chalk OK, others must be < 20%
-                ownership_pct = (player.ownership or 0.0) * 100.0  # Convert to percentage
-                if player.position != 'RB' and ownership_pct >= 20.0:
+                # Very soft ownership filter: Only filter if ownership is extremely high (> 50%) to avoid obvious chalk
+                # RB chalk is always OK
+                # Allow null/zero ownership through (they'll be preferred in optimization)
+                if player.position != 'RB' and ownership_pct >= 50.0:
                     skipped_tournament_filter += 1
-                    logger.debug(f"Player {player.name} ({player.position}) filtered: ownership {ownership_pct:.1f}% >= 20% (non-RB)")
+                    filtered_by_ownership.append({
+                        'name': player.name,
+                        'position': player.position,
+                        'team': player.team,
+                        'itt': player.implied_team_total,
+                        'ownership': ownership_pct,
+                        'smart_score': player.smart_score,
+                    })
+                    logger.warning(
+                        f"TOURNAMENT FILTER: {player.name} ({player.position}, {player.team}) - "
+                        f"Ownership {ownership_pct:.1f}% >= 50% (non-RB), ITT: {player.implied_team_total}, Smart Score: {player.smart_score:.1f}"
+                    )
                     continue
 
             opt_players.append(PlayerOptimizationData(
@@ -376,6 +439,31 @@ class LineupOptimizerService:
                 f"{skipped_zero_salary} zero salaries"
                 + (f", {skipped_tournament_filter} tournament filters" if skipped_tournament_filter > 0 else "")
             )
+            
+            # Detailed breakdown of tournament filters
+            if skipped_tournament_filter > 0:
+                logger.warning(f"TOURNAMENT FILTER BREAKDOWN:")
+                logger.warning(f"  Filtered by ITT < 12: {len(filtered_by_itt)} players")
+                logger.warning(f"  Filtered by Ownership >= 50% (non-RB): {len(filtered_by_ownership)} players")
+                
+                # Group by position
+                by_position = {}
+                for p in filtered_by_itt + filtered_by_ownership:
+                    pos = p['position']
+                    if pos not in by_position:
+                        by_position[pos] = []
+                    by_position[pos].append(p)
+                
+                for position, players in by_position.items():
+                    logger.warning(f"  {position} filtered: {len(players)} players")
+                    # Show first 5 examples
+                    for p in players[:5]:
+                        logger.warning(
+                            f"    - {p['name']} ({p['team']}): "
+                            f"ITT={p['itt']}, Own={p['ownership']:.1f}%, Score={p['smart_score']:.1f}"
+                        )
+                    if len(players) > 5:
+                        logger.warning(f"    ... and {len(players) - 5} more")
 
         return opt_players
     
@@ -640,7 +728,14 @@ class LineupOptimizerService:
             # Target: High Smart Score with low ownership (except RB)
             
             for player in players:
-                ownership_pct = player.ownership * 100.0  # Convert to percentage
+                # Handle ownership format (decimal 0-1 or percentage 0-100)
+                ownership_raw = player.ownership or 0.0
+                if ownership_raw > 1.0:
+                    ownership_pct = ownership_raw  # Already percentage
+                    ownership_decimal = ownership_raw / 100.0  # Convert to decimal for calculations
+                else:
+                    ownership_pct = ownership_raw * 100.0  # Convert to percentage
+                    ownership_decimal = ownership_raw  # Already decimal
                 
                 # RB chalk is OK - don't penalize high-owned RBs
                 if player.position == 'RB':
@@ -649,8 +744,8 @@ class LineupOptimizerService:
                 
                 # For non-RBs: optimize for ownership leverage
                 # Leverage = Smart Score / Ownership (higher is better)
-                if player.ownership > 0.01:  # Avoid division by zero
-                    leverage_score = player.smart_score / player.ownership
+                if ownership_decimal > 0.01:  # Avoid division by zero
+                    leverage_score = player.smart_score / ownership_decimal
                     # Boost players with high leverage (high Smart Score, low ownership)
                     leverage_bonus = leverage_score * 0.5  # 0.5 bonus per leverage point
                     prob += player_vars[player.player_id] * leverage_bonus
