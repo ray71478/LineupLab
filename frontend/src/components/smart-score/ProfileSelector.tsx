@@ -62,7 +62,7 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
 
   const handleProfileSelect = (profileId: number) => {
     loadProfile(profileId);
-    onProfileChange?.(profileId);
+    // Profile change will trigger automatic recalculation via useEffect in SmartScorePage
   };
 
   const handleOpenSaveDialog = () => {
@@ -157,8 +157,8 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
             py: 0.75,
             whiteSpace: 'nowrap',
             '&:hover': {
-              borderColor: '#ff8c42',
-              backgroundColor: 'rgba(255, 140, 66, 0.08)',
+              borderColor: '#ff6b35',
+              backgroundColor: 'rgba(255, 107, 53, 0.08)',
             },
           }}
         >
@@ -172,8 +172,8 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
         onClose={handleCloseSaveDialog}
         PaperProps={{
           sx: {
-            backgroundColor: '#1a1a2e',
-            border: '1px solid rgba(255, 140, 66, 0.2)',
+            backgroundColor: '#0a0a0a',
+            border: '1px solid rgba(255, 107, 53, 0.2)',
           },
         }}
       >
@@ -184,18 +184,20 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
             alignItems: 'center',
             borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
             pb: 2,
+            backgroundColor: '#000000',
           }}
         >
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, color: '#ffffff' }}>
             Save Weight Profile
           </Typography>
           <IconButton
             onClick={handleCloseSaveDialog}
             size="small"
             sx={{
-              color: 'text.secondary',
+              color: '#a0a0a0',
               '&:hover': {
-                backgroundColor: 'rgba(255, 140, 66, 0.1)',
+                backgroundColor: 'rgba(255, 107, 53, 0.1)',
+                color: '#ff6b35',
               },
             }}
           >
@@ -203,9 +205,19 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
           </IconButton>
         </DialogTitle>
 
-        <DialogContent sx={{ pt: 3 }}>
+        <DialogContent sx={{ pt: 3, backgroundColor: '#0a0a0a' }}>
           {saveError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
+            <Alert 
+              severity="error" 
+              sx={{ 
+                mb: 2,
+                backgroundColor: 'rgba(244, 67, 54, 0.15)',
+                color: '#f44336',
+                '& .MuiAlert-icon': {
+                  color: '#f44336',
+                },
+              }}
+            >
               {saveError}
             </Alert>
           )}
@@ -222,27 +234,34 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
             placeholder="Enter profile name"
             disabled={isSaving}
             sx={{
+              '& .MuiInputLabel-root': {
+                color: '#a0a0a0',
+              },
+              '& .MuiInputBase-input': {
+                color: '#ffffff',
+              },
               '& .MuiOutlinedInput-root': {
+                backgroundColor: 'rgba(0, 0, 0, 0.3)',
                 '& fieldset': {
                   borderColor: 'rgba(255, 255, 255, 0.2)',
                 },
                 '&:hover fieldset': {
-                  borderColor: '#ff8c42',
+                  borderColor: '#ff6b35',
                 },
                 '&.Mui-focused fieldset': {
-                  borderColor: '#ff8c42',
+                  borderColor: '#ff6b35',
                 },
               },
             }}
           />
         </DialogContent>
 
-        <DialogActions sx={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', p: 2 }}>
+        <DialogActions sx={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', p: 2, backgroundColor: '#000000' }}>
           <Button
             onClick={handleCloseSaveDialog}
             disabled={isSaving}
             sx={{
-              color: 'text.secondary',
+              color: '#ffffff',
               '&:hover': {
                 backgroundColor: 'rgba(255, 255, 255, 0.05)',
               },
@@ -255,9 +274,14 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
             disabled={isSaving || !profileName.trim()}
             variant="contained"
             sx={{
-              backgroundColor: '#ff8c42',
+              backgroundColor: '#ff6b35',
+              color: '#ffffff',
               '&:hover': {
-                backgroundColor: '#e65a2b',
+                backgroundColor: '#e55a25',
+              },
+              '&:disabled': {
+                backgroundColor: 'rgba(255, 107, 53, 0.3)',
+                color: 'rgba(255, 255, 255, 0.5)',
               },
             }}
           >

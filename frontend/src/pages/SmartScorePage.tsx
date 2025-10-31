@@ -68,6 +68,7 @@ export const SmartScorePage: React.FC = () => {
     isCalculating,
   } = useSmartScore(weekId);
 
+  const [previousProfileId, setPreviousProfileId] = useState<number | null>(null);
   const [localPlayers, setLocalPlayers] = useState<PlayerScoreResponse[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
@@ -84,11 +85,54 @@ export const SmartScorePage: React.FC = () => {
     hasSnapshot,
   } = useScoreSnapshot();
 
+  // Auto-apply when profile changes (but not on initial load)
+  useEffect(() => {
+    // Only auto-apply if:
+    // 1. We have a weekId
+    // 2. We have a currentProfile
+    // 3. The profile actually changed (not initial load)
+    // 4. We're already initialized (scores have been calculated at least once)
+    if (
+      weekId &&
+      currentProfile &&
+      currentProfile.id !== previousProfileId &&
+      previousProfileId !== null &&
+      isInitialized
+    ) {
+      // Store previous scores before recalculation
+      if (localPlayers.length > 0) {
+        createSnapshot(localPlayers);
+      }
+
+      // Recalculate with new profile weights
+      const applyProfile = async () => {
+        try {
+          // Use weights/config from the profile directly to ensure we have the latest values
+          const profileWeights = currentProfile.weights;
+          const profileConfig = currentProfile.config;
+          const calculatedPlayers = await calculateScores(weekId, profileWeights, profileConfig);
+          setLocalPlayers(calculatedPlayers);
+        } catch (err) {
+          console.error('Failed to calculate scores after profile change:', err);
+        }
+      };
+
+      applyProfile();
+    }
+
+    // Update previous profile ID (track even on initial load to set baseline)
+    if (currentProfile) {
+      setPreviousProfileId(currentProfile.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProfile?.id, weekId, isInitialized]); // Only depend on profile ID, not full profile object
+
   // Reset initialization when week changes
   useEffect(() => {
     if (weekId) {
       setIsInitialized(false);
       setIsCalculatingInitial(false);
+      setPreviousProfileId(null); // Reset profile tracking when week changes
       // Don't reset defaultProfileLoadAttempted - it's per session, not per week
     }
   }, [weekId]);
@@ -205,9 +249,6 @@ export const SmartScorePage: React.FC = () => {
     updateWeights(weights);
   };
 
-  const handleConfigChange = (config: ScoreConfig) => {
-    updateConfig(config);
-  };
 
   const isLoading = scoresLoading || profilesLoading || isCalculating;
   const error = scoresError || profilesError;
@@ -265,6 +306,7 @@ export const SmartScorePage: React.FC = () => {
                   onReset={handleReset}
                   onWeightsChange={handleWeightsChange}
                   onConfigChange={handleConfigChange}
+                  onProfileChange={handleProfileChange}
                   isCalculating={isCalculating}
                 />
               </React.Suspense>

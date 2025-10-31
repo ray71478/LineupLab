@@ -101,15 +101,15 @@ class WeightProfileService:
                 text("UPDATE weight_profiles SET is_default = false WHERE is_default = true")
             )
 
-        # Convert weights and config to JSONB
+        # Convert weights and config to JSONB strings
         weights_json = json.dumps(weights.model_dump())
         config_json = json.dumps(config.model_dump())
 
-        # Insert new profile
+        # Insert new profile - PostgreSQL will auto-cast JSON strings to JSONB
         result = self.session.execute(
             text("""
                 INSERT INTO weight_profiles (name, weights, config, is_default, created_at, updated_at)
-                VALUES (:name, :weights::jsonb, :config::jsonb, :is_default, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (:name, :weights, :config, :is_default, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING id, created_at, updated_at
             """),
             {
@@ -231,11 +231,11 @@ class WeightProfileService:
             params["name"] = name
 
         if weights is not None:
-            updates.append("weights = :weights::jsonb")
+            updates.append("weights = :weights")
             params["weights"] = json.dumps(weights.model_dump())
 
         if config is not None:
-            updates.append("config = :config::jsonb")
+            updates.append("config = :config")
             params["config"] = json.dumps(config.model_dump())
 
         if is_default is not None:
