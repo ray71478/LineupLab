@@ -41,6 +41,9 @@ const LineupDisplay = React.lazy(() =>
     default: m.LineupDisplay,
   }))
 );
+const LineupGenerationProgress = React.lazy(() =>
+  import('../components/lineups/LineupGenerationProgress')
+);
 
 const DEFAULT_SETTINGS: OptimizationSettings = {
   num_lineups: 10,
@@ -187,6 +190,13 @@ export const LineupsPage: React.FC = () => {
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
             {error}
           </Alert>
+        )}
+
+        {/* Progress Indicator */}
+        {isGenerating && (
+          <React.Suspense fallback={<CircularProgress />}>
+            <LineupGenerationProgress isGenerating={isGenerating} />
+          </React.Suspense>
         )}
 
         {/* Configuration Panel - Stacked vertically on top */}
