@@ -42,11 +42,13 @@ export const ScoreDeltaIndicator: React.FC<ScoreDeltaIndicatorProps> = ({
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-      <Typography sx={{ fontWeight: 600 }}>{score.toFixed(2)}</Typography>
+      <Typography sx={{ fontWeight: 600, fontSize: '0.75rem', color: '#ff6b35' }}>
+        {score.toFixed(2)}
+      </Typography>
       {showDelta && delta !== null && delta !== undefined && delta !== 0 && (
         <Typography
           sx={{
-            fontSize: '0.75rem',
+            fontSize: '0.65rem',
             color: getDeltaColor(delta),
             fontWeight: 500,
           }}

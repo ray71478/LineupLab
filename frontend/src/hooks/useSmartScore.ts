@@ -40,19 +40,14 @@ export interface UseSmartScoreReturn {
 
 /**
  * Fetch players with Smart Scores for a week
- * Note: This assumes players are already calculated. For recalculation, use calculateScores mutation.
+ * Note: This endpoint doesn't return Smart Scores - it's just for initial player data
+ * Smart Scores are calculated via the calculate mutation
  */
 async function fetchPlayersWithScores(weekId: number): Promise<PlayerScoreResponse[]> {
-  // For now, fetch players from the players endpoint
-  // In a real implementation, you might want a dedicated endpoint for Smart Score players
-  const response = await fetch(`/api/players/by-week/${weekId}`);
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch players for week ${weekId}`);
-  }
-
-  const data = await response.json();
-  return data.players || [];
+  // For Smart Score, we don't need to fetch players separately
+  // The calculation endpoint returns all players with scores
+  // Return empty array to avoid unnecessary API call
+  return [];
 }
 
 /**

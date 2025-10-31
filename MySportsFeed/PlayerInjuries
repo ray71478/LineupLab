@@ -1,0 +1,146 @@
+Player Injuries (v2.1)
+A list of all currently injured players.
+
+
+*Addon Required*: DETAILED
+
+
+URL Examples:
+
+CSV: 
+JSON: 
+XML: 
+XSD (for XML): 
+
+PULL URL Syntax
+Response
+Code Samples
+
+Issue a HTTPS GET request to:
+
+https://api.mysportsfeeds.com/v2.1/pull/nfl/injuries.{format}
+with optional parameters:
+
+player={list-of-players} (filter players)
+team={list-of-teams} (filter teams)
+position={list-of-positions} (filter player positions)
+sort={sort-specifier} (sort the feed's content)
+offset={offset-specifier} (filter results starting at the given offset)
+limit={limit-specifier} (limit the maximum # of results)
+force={force-if-not-modified} (force content)
+
+where:
+
+Parameter	Description
+{format}	one of csv, xml, or json
+team={list-of-teams}	(optional) comma-delimited list of one or more teams.
+
+If this parameter is omitted, by default ALL teams are included.
+In addition, for either the player_gamelogs or team_gamelogs, at least one player, team, or game MUST be specified.
+
+
+There are several acceptable formats for a team. Each is case-insensitive, and strips out any punctuation.
+
+Team ID:
+24
+Team abbreviation:
+bos
+City and team name:
+boston-celtics
+player={list-of-players}	(optional) comma-delimited list of one or more players.
+
+If this parameter is omitted, by default ALL players are included.
+In addition, for either the player_gamelogs or team_gamelogs, at least one player, team, or game MUST be specified.
+
+
+There are several acceptable formats for a player. Each is case-insensitive, and strips out any punctuation.
+
+Last name only:
+smith
+First and Last names:
+joe-smith
+In case several players with teh same name exist, you can also include the player ID:
+joe-smith-1234
+position={list-of-positions}	(optional) comma-delimited list of one or more player positions.
+
+If this parameter is omitted, by default ALL positions are included.
+
+The following are the acceptable formats for a position. Each is case-insensitive, and strips out any punctuation.
+
+Position abbreviation:
+qb
+sort={sort-specifier}	(optional) Specifies a sorting order for the results. Format is:
+
+{prefix}.{value}.{sort-order}
+
+The {sort-order} is optional, and must be either "A" for Ascending, or "D" for descending.
+
+Valid values for this feed are:
+player.lastname
+player.age
+player.birthplace
+player.birthdate
+player.height
+player.weight
+player.position
+player.injury
+player.team
+player.number
+team.city
+team.name
+team.abbr
+offset={offset-specifier}	(optional) Specifies the starting offset for the results. Defaults to 0.
+limit={limit-specifier}	(optional) Specifies the maxmimum number of results. If not specified, all results are returned.
+force={force-if-not-modified}	(optional) Valid values are true or false.
+
+Specifies whether to "force" content to be returned and avoid an empty 304 response. (See Response Codes section for more details)
+
+Defaults to "true", which will always return the most up-to-date content based on your subscription level.
+
+Specifying "false" will also avoid any throttling restrictions on your requests. See the Throttling section for more.
+
+The following describes each property of the feed's returned response. Static samples are no longer available without making a valid request to the API.
+
+Properties
+Name	Details
+lastUpdatedOn	
+Indicates the time that this feed's content was generated, secified in ISO-8601 format.
+
+players	
+An array of currently injured players.
+
+players	
+An array of players, with details including current injury.
+
+players.currentTeam	
+Identifies the player's latest known team. Could be null if not assigned to a team at present.
+
+players.currentInjury.description,
+players.currentInjury.playingProbability	
+Description of the player's current injury, along with the probability of playing in upcoming games. Possible probability values are:
+
+PROBABLE - expected to play in upcoming games.
+QUESTIONABLE - roughly 50/50 chance of playing in upcoming games.
+DOUBTFUL - not expected to play in upcoming games.
+OUT - not expected to play in upcoming games.
+
+These samples demonstrate how to make a PULL request for this feed in various languages. Includes authentication via HTTP BASIC with your API Key credentials, and specifying compression where necessary.
+
+You'll just need to replace the parameters for {pull-url} and {apikey_token} with appropriate values.
+
+Or if you want an even more concrete example, check out our wrapper libraries on Github. If your favourite language isn't available as a wrapper library yet, it may soon be - let us know!
+
+
+cURL
+PHP
+Python
+Javascript
+Node.js
+Java
+C#
+Obj-C
+Ruby
+cURL's "-u" option allows you to specify the apikey_token and password directly, and creates the HTTP Authorization header for you transparently.
+curl -X "GET" {pull-url}
+	-u {apikey_token}:MYSPORTSFEEDS
+	--compress

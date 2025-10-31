@@ -207,12 +207,17 @@ class WeekManagementService:
         if not (2025 <= year <= 2030):
             raise InvalidYearError(year)
 
-        # Query weeks for this year
+        # Query weeks with metadata and status overrides in a single query to avoid N+1 problem
         result = self.session.execute(
             text("""
                 SELECT w.id, w.season, w.week_number, w.status, w.status_override,
-                       w.nfl_slate_date, w.is_locked, w.locked_at
+                       w.nfl_slate_date, w.is_locked, w.locked_at,
+                       wm.kickoff_time, wm.espn_schedule_url, wm.import_status, 
+                       wm.import_count, wm.import_timestamp,
+                       wso.override_status
                 FROM weeks w
+                LEFT JOIN week_metadata wm ON w.id = wm.week_id
+                LEFT JOIN week_status_overrides wso ON w.id = wso.week_id
                 WHERE w.season = :season
                 ORDER BY w.week_number ASC
             """),
@@ -222,52 +227,42 @@ class WeekManagementService:
 
         weeks = []
         for row in weeks_rows:
-            week_id, season, week_number, status, status_override, nfl_slate_date, is_locked, locked_at = row
+            week_id, season, week_number, status, status_override, nfl_slate_date, is_locked, locked_at, kickoff_time, espn_link, import_status, import_count, import_timestamp, override_status = row
 
-            # Get week metadata
-            metadata_result = self.session.execute(
-                text("""
-                    SELECT kickoff_time, espn_schedule_url, import_status, import_count, import_timestamp
-                    FROM week_metadata
-                    WHERE week_id = :week_id
-                """),
-                {"week_id": week_id}
-            )
-            metadata_row = metadata_result.fetchone()
-
-            if metadata_row:
-                kickoff_time, espn_link, import_status, import_count, import_timestamp = metadata_row
-                
-                # Format kickoff_time to 12-hour format
-                formatted_kickoff = None
-                if kickoff_time:
-                    # kickoff_time is a time object, convert to 12-hour format
-                    hour = kickoff_time.hour
-                    minute = kickoff_time.minute
-                    period = "PM" if hour >= 12 else "AM"
-                    display_hour = hour if hour <= 12 else hour - 12
-                    if display_hour == 0:
-                        display_hour = 12
-                    formatted_kickoff = f"{display_hour}:{minute:02d} {period} ET"
-                
+            # Format kickoff_time to 12-hour format
+            formatted_kickoff = None
+            if kickoff_time:
+                # kickoff_time is a time object, convert to 12-hour format
+                hour = kickoff_time.hour
+                minute = kickoff_time.minute
+                period = "PM" if hour >= 12 else "AM"
+                display_hour = hour if hour <= 12 else hour - 12
+                if display_hour == 0:
+                    display_hour = 12
+                formatted_kickoff = f"{display_hour}:{minute:02d} {period} ET"
+            
+            if espn_link or import_status or import_count or import_timestamp:
                 metadata = {
                     "kickoff_time": formatted_kickoff,
                     "espn_link": espn_link,
-                    "import_status": import_status,
-                    "import_count": import_count,
+                    "import_status": import_status or "pending",
+                    "import_count": import_count or 0,
                     "import_timestamp": self._to_iso_format(import_timestamp),
                 }
             else:
                 metadata = {
-                    "kickoff_time": None,
+                    "kickoff_time": formatted_kickoff,
                     "espn_link": None,
                     "import_status": "pending",
                     "import_count": 0,
                     "import_timestamp": None,
                 }
 
-            # Apply status override or calculate current status
-            final_status = self._apply_status_override(week_id, nfl_slate_date, status)
+            # Apply status override (now from JOIN, no extra query needed)
+            final_status = override_status if override_status else status
+            # Still need to check date-based status calculation if no override
+            if not override_status:
+                final_status = self._calculate_status_from_date(nfl_slate_date, status)
 
             week_dict = {
                 "id": week_id,
@@ -716,6 +711,31 @@ class WeekManagementService:
             return override_row[0]
 
         return calculated_status
+    
+    def _calculate_status_from_date(self, nfl_slate_date: Optional[date], default_status: str) -> str:
+        """
+        Calculate status based on date if no override exists.
+        
+        Args:
+            nfl_slate_date: NFL slate date for the week
+            default_status: Default status from database
+            
+        Returns:
+            Calculated status
+        """
+        if not nfl_slate_date:
+            return default_status
+        
+        today = date.today()
+        
+        # If slate date is in the future, status is "upcoming"
+        if nfl_slate_date > today:
+            return "upcoming"
+        # If slate date is today or in the past, status is "completed" or "active"
+        elif nfl_slate_date < today:
+            return "completed"
+        else:
+            return "active"
 
     def _generate_espn_link(self, week_number: int, year: int) -> str:
         """

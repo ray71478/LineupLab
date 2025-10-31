@@ -9,7 +9,7 @@ Provides REST API endpoints for:
 
 import logging
 import time
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -92,6 +92,7 @@ async def calculate_smart_scores(
         )
 
     except Exception as e:
+        db.rollback()
         logger.error(f"Error calculating Smart Scores: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -134,6 +135,39 @@ async def list_weight_profiles(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to list weight profiles: {str(e)}",
+        )
+
+
+@router.get("/profiles/default", response_model=WeightProfileResponse)
+async def get_default_weight_profile(
+    db: Any = Depends(_get_current_db_dependency),
+) -> WeightProfileResponse:
+    """
+    Get the default weight profile.
+
+    Args:
+        db: Database session
+
+    Returns:
+        WeightProfileResponse: Default profile
+
+    Raises:
+        HTTPException: 404 if no default profile exists
+    """
+    try:
+        service = WeightProfileService(db)
+        return service.get_default_profile()
+
+    except ProfileNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No default weight profile found",
+        )
+    except Exception as e:
+        logger.error(f"Error getting default weight profile: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get default weight profile: {str(e)}",
         )
 
 
@@ -297,35 +331,47 @@ async def delete_weight_profile(
         )
 
 
-@router.get("/profiles/default", response_model=WeightProfileResponse)
-async def get_default_weight_profile(
+@router.post("/cache/invalidate")
+async def invalidate_smart_score_cache(
+    week_id: Optional[int] = None,
     db: Any = Depends(_get_current_db_dependency),
-) -> WeightProfileResponse:
+) -> dict:
     """
-    Get the default weight profile.
+    Invalidate Smart Score calculation cache.
+
+    This endpoint clears cached Smart Score calculations so that fresh calculations
+    are performed with the latest weights/data. Use this after:
+    - Updating weight profiles
+    - Refreshing Vegas data
+    - Loading new player data
 
     Args:
+        week_id: Optional - clear cache for specific week only. If None, clears all cache.
         db: Database session
 
     Returns:
-        WeightProfileResponse: Default profile
-
-    Raises:
-        HTTPException: 404 if no default profile exists
+        Dictionary with success status and message
     """
     try:
-        service = WeightProfileService(db)
-        return service.get_default_profile()
+        service = SmartScoreService(db)
+        service.invalidate_cache(week_id=week_id)
 
-    except ProfileNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No default weight profile found",
-        )
+        if week_id:
+            message = f"Cleared Smart Score cache for week {week_id}"
+        else:
+            message = "Cleared all Smart Score cache"
+
+        logger.info(message)
+
+        return {
+            "success": True,
+            "message": message,
+        }
+
     except Exception as e:
-        logger.error(f"Error getting default weight profile: {str(e)}", exc_info=True)
+        logger.error(f"Error invalidating Smart Score cache: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get default weight profile: {str(e)}",
+            detail=f"Failed to invalidate cache: {str(e)}",
         )
 

@@ -34,6 +34,14 @@ export interface ScoreBreakdown {
   missing_data_indicators?: Record<string, boolean>;
 }
 
+export interface StackPartner {
+  partner_key: string;
+  partner_name: string;
+  partner_position: string;
+  correlation: number;
+  games_count: number;
+}
+
 export interface PlayerScoreResponse {
   player_id: number;
   player_key: string;
@@ -49,6 +57,15 @@ export interface PlayerScoreResponse {
   games_with_20_plus_snaps?: number | null;
   regression_risk: boolean;
   score_breakdown?: ScoreBreakdown | null;
+  // Vegas context data
+  implied_team_total?: number | null;
+  over_under?: number | null;
+  // Historical insights
+  consistency_score?: number | null;
+  opponent_matchup_avg?: number | null;
+  salary_efficiency_trend?: 'up' | 'down' | 'stable' | null;
+  usage_warnings?: string[] | null;
+  stack_partners?: StackPartner[] | null;
 }
 
 export interface WeightProfileResponse {

@@ -7,6 +7,7 @@ Configures FastAPI app, registers routers, and sets up middleware.
 
 import logging
 import os
+from dotenv import load_dotenv
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -15,6 +16,9 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
 
 from backend.exceptions import CortexException
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -58,6 +62,8 @@ import backend.routers.unmatched_players_router as unmatched_players_router_modu
 import backend.routers.week_router as week_router_module
 import backend.routers.players_router as players_router_module
 import backend.routers.smart_score_router as smart_score_router_module
+import backend.routers.insights_router as insights_router_module
+import backend.routers.refresh_router as refresh_router_module
 
 # Override get_db in each router module
 import_router_module.get_db = get_db
@@ -66,8 +72,10 @@ unmatched_players_router_module.get_db = get_db
 week_router_module.get_db = get_db
 players_router_module.get_db = get_db
 smart_score_router_module.get_db = get_db
+insights_router_module.get_db = get_db
+refresh_router_module.get_db = get_db
 
-from backend.routers import import_router, import_history_router, unmatched_players_router, week_router, players_router, smart_score_router
+from backend.routers import import_router, import_history_router, unmatched_players_router, week_router, players_router, smart_score_router, insights_router, refresh_router
 
 # Create FastAPI app
 app = FastAPI(
@@ -144,6 +152,8 @@ app.include_router(unmatched_players_router.router)
 app.include_router(week_router.router)
 app.include_router(players_router.router)
 app.include_router(smart_score_router.router)
+app.include_router(insights_router.router)
+app.include_router(refresh_router.router)
 
 logger.info("Cortex backend API initialized successfully")
 logger.info(f"Database: {DATABASE_URL}")
@@ -154,6 +164,8 @@ logger.info("  - /api/unmatched-players (unmatched_players_router)")
 logger.info("  - /api/weeks (week_router)")
 logger.info("  - /api/players (players_router)")
 logger.info("  - /api/smart-score (smart_score_router)")
+logger.info("  - /api/insights (insights_router)")
+logger.info("  - /api/refresh (refresh_router)")
 
 
 if __name__ == "__main__":

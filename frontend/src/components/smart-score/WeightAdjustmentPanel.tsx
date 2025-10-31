@@ -24,6 +24,7 @@ import {
   Divider,
   Collapse,
   IconButton,
+  Tooltip,
   useTheme,
   useMediaQuery,
 } from '@mui/material';
@@ -52,6 +53,11 @@ const WEIGHT_LABELS = {
   W6: 'Regression Penalty',
   W7: 'Vegas Context',
   W8: 'Matchup Adjustment',
+};
+
+// Disabled weights that have no effect
+const DISABLED_WEIGHTS = {
+  W8: 'Disabled - Pending data configuration',
 };
 
 export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
@@ -99,16 +105,27 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
     onConfigChange?.(newConfig);
   };
 
-  const handleApply = () => {
+  const handleApply = async () => {
+    // First, invalidate Smart Score cache so fresh calculations use new weights
+    try {
+      await fetch('/api/smart-score/cache/invalidate', {
+        method: 'POST',
+      });
+    } catch (cacheError) {
+      console.warn('Failed to invalidate Smart Score cache:', cacheError);
+      // Don't block the apply if cache invalidation fails
+    }
+
+    // Then call the original apply handler
     onApply();
   };
 
   return (
     <Paper
       sx={{
-        p: { xs: 2, md: 3 },
-        backgroundColor: '#1a1a2e',
-        border: '1px solid rgba(255, 140, 66, 0.2)',
+        p: { xs: 1.5, md: 2 },
+        backgroundColor: '#0a0a0a',
+        border: '1px solid rgba(255, 107, 53, 0.2)',
         borderRadius: 2,
       }}
     >
@@ -117,10 +134,10 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          mb: 2,
+          mb: 1.5,
         }}
       >
-        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600, fontSize: '0.95rem' }}>
           Weight Adjustment
         </Typography>
         {isMobile && (
@@ -129,30 +146,31 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
             size="small"
             sx={{
               color: 'text.secondary',
+              padding: '4px',
               '&:hover': {
-                backgroundColor: 'rgba(255, 140, 66, 0.1)',
+                backgroundColor: 'rgba(255, 107, 53, 0.1)',
               },
             }}
           >
-            {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            {expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
           </IconButton>
         )}
       </Box>
 
       <Collapse in={expanded}>
         {/* Profile Selector */}
-        <Box sx={{ mb: 3 }}>
+        <Box sx={{ mb: 2 }}>
           <ProfileSelector
             currentWeights={localWeights}
             currentConfig={localConfig}
           />
         </Box>
 
-        <Divider sx={{ mb: 3 }} />
+        <Divider sx={{ mb: 2 }} />
 
         {/* Projection Source Selector */}
-      <FormControl fullWidth sx={{ mb: 3 }}>
-        <InputLabel>Projection Source</InputLabel>
+      <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+        <InputLabel sx={{ fontSize: '0.75rem' }}>Projection Source</InputLabel>
           <Select
             value={localConfig.projection_source}
             label="Projection Source"
@@ -162,60 +180,107 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
                 projection_source: e.target.value as 'ETR' | 'LineStar',
               })
             }
+            sx={{
+              fontSize: '0.75rem',
+              '& .MuiSelect-select': {
+                py: 1.2,
+              },
+            }}
           >
-          <MenuItem value="ETR">Establish The Run (ETR)</MenuItem>
-          <MenuItem value="LineStar">LineStar</MenuItem>
+          <MenuItem value="ETR" sx={{ fontSize: '0.75rem' }}>Establish The Run (ETR)</MenuItem>
+          <MenuItem value="LineStar" sx={{ fontSize: '0.75rem' }}>LineStar</MenuItem>
         </Select>
       </FormControl>
 
-      <Divider sx={{ mb: 3 }} />
+      <Divider sx={{ mb: 2 }} />
 
       {/* Weight Sliders */}
-      <Stack spacing={3}>
-        {(Object.keys(WEIGHT_LABELS) as Array<keyof WeightProfile>).map((key) => (
-          <Box key={key}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-              <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                {WEIGHT_LABELS[key]}
-              </Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary', minWidth: 50, textAlign: 'right' }}>
-                {localWeights[key].toFixed(3)}
-              </Typography>
-            </Box>
-            <Slider
-              value={localWeights[key]}
-              min={0}
-              max={1}
-              step={0.001}
-              onChange={(_, value) => handleWeightChange(key, value as number)}
-              sx={{
-                color: '#ff8c42',
-                '& .MuiSlider-thumb': {
-                  '&:hover': {
-                    boxShadow: '0 0 0 8px rgba(255, 140, 66, 0.16)',
-                  },
-                },
-              }}
-            />
-          </Box>
-        ))}
+      <Stack spacing={1.5}>
+        {(Object.keys(WEIGHT_LABELS) as Array<keyof WeightProfile>).map((key) => {
+          const isDisabled = key in DISABLED_WEIGHTS;
+          const disabledReason = DISABLED_WEIGHTS[key as keyof typeof DISABLED_WEIGHTS];
+
+          return (
+            <Tooltip
+              key={key}
+              title={isDisabled ? disabledReason : ''}
+              placement="right"
+            >
+              <Box
+                sx={{
+                  opacity: isDisabled ? 0.5 : 1,
+                  pointerEvents: isDisabled ? 'auto' : 'auto',
+                }}
+              >
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 500,
+                      fontSize: '0.75rem',
+                      color: isDisabled ? 'text.disabled' : 'inherit',
+                    }}
+                  >
+                    {WEIGHT_LABELS[key]}
+                    {isDisabled && ' (Disabled)'}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem', minWidth: 45, textAlign: 'right' }}>
+                    {localWeights[key].toFixed(3)}
+                  </Typography>
+                </Box>
+                <Slider
+                  value={localWeights[key]}
+                  min={0}
+                  max={1}
+                  step={0.001}
+                  onChange={(_, value) => {
+                    if (!isDisabled) {
+                      handleWeightChange(key, value as number);
+                    }
+                  }}
+                  disabled={isDisabled}
+                  size="small"
+                  sx={{
+                    color: isDisabled ? '#666' : '#ff6b35',
+                    height: 4,
+                    '& .MuiSlider-thumb': {
+                      width: 14,
+                      height: 14,
+                      '&:hover': {
+                        boxShadow: isDisabled ? 'none' : '0 0 0 6px rgba(255, 107, 53, 0.16)',
+                      },
+                    },
+                    '& .MuiSlider-track': {
+                      height: 3,
+                    },
+                    '& .MuiSlider-rail': {
+                      height: 3,
+                    },
+                  }}
+                />
+              </Box>
+            </Tooltip>
+          );
+        })}
       </Stack>
 
-      <Divider sx={{ my: 3 }} />
+      <Divider sx={{ my: 2 }} />
 
       {/* Action Buttons */}
-      <Stack spacing={2}>
+      <Stack spacing={1.5}>
         <Button
           variant="contained"
           fullWidth
           onClick={handleApply}
           disabled={isCalculating}
+          size="small"
           sx={{
-            backgroundColor: '#ff8c42',
+            backgroundColor: '#ff6b35',
+            fontSize: '0.75rem',
+            py: 0.75,
             '&:hover': {
-              backgroundColor: '#e65a2b',
+              backgroundColor: '#e55a25',
             },
-            minHeight: { xs: 44, md: 36 }, // Touch-friendly on mobile
           }}
         >
           {isCalculating ? 'Calculating...' : 'Apply'}
@@ -225,8 +290,16 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
           fullWidth
           onClick={onReset}
           disabled={isCalculating}
+          size="small"
           sx={{
-            minHeight: { xs: 44, md: 36 }, // Touch-friendly on mobile
+            fontSize: '0.75rem',
+            py: 0.75,
+            borderColor: '#ff6b35',
+            color: '#ff6b35',
+            '&:hover': {
+              borderColor: '#e55a25',
+              backgroundColor: 'rgba(255, 107, 53, 0.08)',
+            },
           }}
         >
           Reset to Default

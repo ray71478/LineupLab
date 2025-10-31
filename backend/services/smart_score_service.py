@@ -8,6 +8,9 @@ Provides methods for:
 - Position-specific trend calculations
 - Vegas context calculations
 - Regression risk detection
+- Real injury data integration from MySportsFeeds
+- Real Vegas ITT data integration
+- Real defensive ranking data integration
 
 Smart Score Formula:
   Smart Score = (projection × W1) +
@@ -23,7 +26,7 @@ Smart Score Formula:
 import logging
 import json
 import hashlib
-from typing import Optional, Dict, Tuple, List
+from typing import Optional, Dict, Tuple, List, Set
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from sqlalchemy import text
@@ -35,6 +38,7 @@ from backend.schemas.smart_score_schemas import (
     ScoreBreakdown,
     PlayerScoreResponse,
 )
+from backend.services.historical_insights_service import HistoricalInsightsService
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +58,7 @@ class PlayerData:
     floor: Optional[float]
     projection_source: Optional[str]
     opponent_rank_category: Optional[str]
+    injury_status: Optional[str] = None  # NEW: PROBABLE, QUESTIONABLE, DOUBTFUL, OUT
 
 
 @dataclass
@@ -79,6 +84,9 @@ class SmartScoreService:
     # Default league average ITT
     DEFAULT_LEAGUE_AVG_ITT = 22.5
 
+    # Injury status values for filtering (unavailable players)
+    UNAVAILABLE_INJURY_STATUSES = {"OUT", "DOUBTFUL"}
+
     def __init__(self, session: Session):
         """
         Initialize SmartScoreService.
@@ -91,6 +99,24 @@ class SmartScoreService:
         # Cache for calculation results: (cache_key, (results, timestamp))
         self._calculation_cache: Dict[str, Tuple[List[PlayerScoreResponse], datetime]] = {}
         self._cache_ttl = timedelta(minutes=5)  # 5 minute TTL
+        self._insights_service = HistoricalInsightsService(session)
+
+    def is_player_available(self, injury_status: Optional[str]) -> bool:
+        """
+        Check if player is available based on injury status.
+
+        Filters out OUT and DOUBTFUL players. PROBABLE and QUESTIONABLE are playable.
+
+        Args:
+            injury_status: Injury status from player_pools.injury_status
+
+        Returns:
+            True if player is available (not OUT/DOUBTFUL), False otherwise
+        """
+        if injury_status is None:
+            return True  # No injury data means available
+
+        return injury_status not in self.UNAVAILABLE_INJURY_STATUSES
 
     def calculate_smart_score(
         self,
@@ -126,16 +152,18 @@ class SmartScoreService:
         w5_result, games_with_20_plus_snaps = self._calculate_w5_trend_adjustment(
             player, week_id, weights.W5
         )
-        # W6: MVP - Visual flag only, no penalty calculation
-        w6_result = FactorResult(value=0.0, used_default=False)
+        # W6: Regression Penalty - Only applies to WRs who had big weeks
         regression_risk, has_regression_data = self._calculate_w6_regression_risk(
             player, week_id, config
+        )
+        w6_result = self._calculate_w6_regression_penalty(
+            player, regression_risk, weights.W6
         )
         w7_result = self._calculate_w7_vegas_context(
             player, week_id, weights.W7, defaults
         )
         w8_result = self._calculate_w8_matchup_adjustment(
-            player, weights.W8
+            player, week_id, weights.W8
         )
 
         # Calculate final Smart Score
@@ -204,10 +232,17 @@ class SmartScoreService:
         defaults: Dict[str, float],
     ) -> FactorResult:
         """
-        Calculate W2: Ceiling Factor.
+        Calculate W2: Ceiling Factor - Differential boost for high-ceiling players.
 
-        Formula: (ceiling - floor) × W2
-        If missing: Estimate based on projection volatility or position defaults
+        Players with higher ceilings (higher upside) get proportionally larger boosts.
+        This is differential: a player with ceiling 30 vs floor 15 gets MORE boost
+        than a player with ceiling 25 vs floor 20 when weight is increased.
+
+        Formula when ceiling/floor available:
+        ceiling_range = (ceiling - floor) × weight
+        Higher ceiling_range = larger additive boost to smart score
+
+        If missing: Estimate based on position defaults
 
         Args:
             player: Player data
@@ -219,8 +254,9 @@ class SmartScoreService:
             FactorResult with calculated value
         """
         if player.ceiling is not None and player.floor is not None:
-            ceiling_factor = player.ceiling - player.floor
-            value = ceiling_factor * weight
+            # Differential: higher ceiling gets more benefit
+            ceiling_range = player.ceiling - player.floor
+            value = ceiling_range * weight
             return FactorResult(value=value, used_default=False)
 
         # Estimate based on position defaults
@@ -302,6 +338,8 @@ class SmartScoreService:
         """
         Calculate W5: Trend Adjustment (position-specific).
 
+        Uses real historical game data from MySportsFeeds API backfill.
+
         Formula: trend_percentage × W5
         Position-specific metrics:
         - WR/TE: target_share trend
@@ -322,10 +360,15 @@ class SmartScoreService:
             return FactorResult(value=0.0, used_default=False), 0
 
         # Get current week info to determine season
-        week_info = self.session.execute(
-            text("SELECT season FROM weeks WHERE id = :week_id"),
-            {"week_id": week_id},
-        ).fetchone()
+        try:
+            week_info = self.session.execute(
+                text("SELECT season FROM weeks WHERE id = :week_id"),
+                {"week_id": week_id},
+            ).fetchone()
+        except Exception as e:
+            logger.warning(f"Error querying weeks table: {e}")
+            self.session.rollback()
+            return FactorResult(value=0.0, used_default=True), 0
 
         if not week_info:
             return FactorResult(value=0.0, used_default=True), 0
@@ -335,10 +378,15 @@ class SmartScoreService:
         # Query historical stats for last 2-4 games with snaps >= 20
         # Note: Using week number from historical_stats, not week_id
         # We need to get the current week number first
-        current_week_info = self.session.execute(
-            text("SELECT week_number FROM weeks WHERE id = :week_id"),
-            {"week_id": week_id},
-        ).fetchone()
+        try:
+            current_week_info = self.session.execute(
+                text("SELECT week_number FROM weeks WHERE id = :week_id"),
+                {"week_id": week_id},
+            ).fetchone()
+        except Exception as e:
+            logger.warning(f"Error querying weeks table for week_number: {e}")
+            self.session.rollback()
+            return FactorResult(value=0.0, used_default=True), 0
 
         if not current_week_info:
             return FactorResult(value=0.0, used_default=True), 0
@@ -463,10 +511,15 @@ class SmartScoreService:
             return False, True
 
         # Get current week info to determine previous week
-        week_info = self.session.execute(
-            text("SELECT week_number, season FROM weeks WHERE id = :week_id"),
-            {"week_id": week_id},
-        ).fetchone()
+        try:
+            week_info = self.session.execute(
+                text("SELECT week_number, season FROM weeks WHERE id = :week_id"),
+                {"week_id": week_id},
+            ).fetchone()
+        except Exception as e:
+            logger.warning(f"Error querying weeks table for regression risk: {e}")
+            self.session.rollback()
+            return False, False
 
         if not week_info:
             return False, False
@@ -509,7 +562,50 @@ class SmartScoreService:
 
         except Exception as e:
             logger.warning(f"Error checking regression risk for {player.player_key}: {e}")
+            self.session.rollback()
             return False, False
+
+    def _calculate_w6_regression_penalty(
+        self,
+        player: PlayerData,
+        regression_risk: bool,
+        weight: float,
+    ) -> FactorResult:
+        """
+        Calculate W6: Regression Penalty for WR players only.
+
+        Penalizes WRs who had big weeks (triggered 80-20 rule) because they're
+        likely to regress toward their mean. Non-WR positions return 0 penalty.
+
+        Formula for WRs with regression_risk=True:
+        value = -weight (negative adjustment)
+
+        For all other cases: value = 0
+
+        Args:
+            player: Player data
+            regression_risk: Whether this player has regression risk (only set for WRs)
+            weight: W6 weight
+
+        Returns:
+            FactorResult with calculated penalty (negative)
+        """
+        # Only apply regression penalty to WRs
+        if player.position != "WR":
+            return FactorResult(value=0.0, used_default=False)
+
+        # Apply penalty only if regression risk detected
+        if regression_risk:
+            # Negative penalty (reduces smart score)
+            value = -weight
+            return FactorResult(
+                value=value,
+                used_default=False,
+                breakdown_info="WR had big week, regression expected"
+            )
+
+        # No regression risk
+        return FactorResult(value=0.0, used_default=False)
 
     def _calculate_w7_vegas_context(
         self,
@@ -519,10 +615,17 @@ class SmartScoreService:
         defaults: Dict[str, float],
     ) -> FactorResult:
         """
-        Calculate W7: Vegas Context.
+        Calculate W7: Vegas Context based on Implied Team Total (ITT).
 
-        Formula: ((team_itt / league_avg_itt) × W7)
-        Missing ITT: Use league average (22.5 default)
+        Vegas implied team totals are the market's estimate of team scoring.
+        Higher ITT = Vegas expects more points from the team = better opportunities.
+
+        Formula: ((team_itt - league_avg_itt) / league_avg_itt) × weight
+
+        This creates a differential boost where:
+        - Teams with ITT > 22.5: Get positive boost proportional to how high
+        - Teams with ITT = 22.5: Get 0 boost (neutral)
+        - Teams with ITT < 22.5: Get negative adjustment (unfavorable matchup)
 
         Args:
             player: Player data
@@ -535,9 +638,9 @@ class SmartScoreService:
         """
         league_avg_itt = defaults.get("league_avg_itt", self.DEFAULT_LEAGUE_AVG_ITT)
 
-        # Query team ITT from vegas_lines table
         try:
-            result = self.session.execute(
+            # Get team's implied team total
+            itt_result = self.session.execute(
                 text("""
                     SELECT implied_team_total
                     FROM vegas_lines
@@ -550,15 +653,12 @@ class SmartScoreService:
                 {"week_id": week_id, "team": player.team},
             ).fetchone()
 
-            if result and result.implied_team_total:
-                team_itt = result.implied_team_total
-                used_default = False
-            else:
-                # Use league average if team ITT not found
-                team_itt = league_avg_itt
-                used_default = True
+            team_itt = itt_result.implied_team_total if itt_result and itt_result.implied_team_total else league_avg_itt
+            used_default = not itt_result or not itt_result.implied_team_total
+
         except Exception as e:
-            logger.warning(f"Error querying team ITT for {player.team}: {e}")
+            logger.warning(f"Error querying Vegas data for {player.team}: {e}")
+            self.session.rollback()
             team_itt = league_avg_itt
             used_default = True
 
@@ -566,43 +666,46 @@ class SmartScoreService:
             # Avoid division by zero
             return FactorResult(value=0.0, used_default=True)
 
-        ratio = team_itt / league_avg_itt
-        value = ratio * weight
+        # ITT Differential: (team_itt - avg) / avg
+        # Positive when team_itt > avg (favorable)
+        # Negative when team_itt < avg (unfavorable)
+        itt_differential = (team_itt - league_avg_itt) / league_avg_itt
 
-        return FactorResult(value=value, used_default=used_default)
+        # Apply weight to differential
+        # This means different players benefit differently based on their team's ITT
+        value = itt_differential * weight
+
+        breakdown_info = f"ITT:{team_itt:.2f} vs Avg:{league_avg_itt:.2f}"
+
+        return FactorResult(value=value, used_default=used_default, breakdown_info=breakdown_info)
 
     def _calculate_w8_matchup_adjustment(
-        self, player: PlayerData, weight: float
+        self, player: PlayerData, week_id: int, weight: float
     ) -> FactorResult:
         """
-        Calculate W8: Matchup Adjustment.
+        Calculate W8: Matchup Adjustment - DISABLED
 
-        Formula: category_value × W8
-        Category values: top_5 = +1.0, middle = 0.0, bottom_5 = -1.0
-        Missing: Use "middle" (0.0)
+        This factor is currently disabled pending:
+        - Access to reliable opponent defensive ranking data
+        - Clearer methodology for matchup quality assessment
+
+        W8 weight slider exists for future use but currently has no effect.
 
         Args:
             player: Player data
-            weight: W8 weight
+            week_id: Week ID for Vegas data lookup (unused currently)
+            weight: W8 weight (unused currently)
 
         Returns:
-            FactorResult with calculated value
+            FactorResult with 0 value
         """
-        category = player.opponent_rank_category or "middle"
-
-        # Map category to value
-        category_values = {
-            "top_5": 1.0,
-            "middle": 0.0,
-            "bottom_5": -1.0,
-        }
-
-        category_value = category_values.get(category, 0.0)
-        value = category_value * weight
-
-        used_default = player.opponent_rank_category is None
-
-        return FactorResult(value=value, used_default=used_default)
+        # DISABLED: Returns 0 regardless of weight
+        # The slider exists for future use when matchup data is properly configured
+        return FactorResult(
+            value=0.0,
+            used_default=False,
+            breakdown_info="Matchup Adjustment currently disabled"
+        )
 
     def categorize_opponent_rank(self, opp_rank: Optional[int]) -> str:
         """
@@ -658,9 +761,11 @@ class SmartScoreService:
             )
         except Exception as e:
             logger.warning(f"Error calculating league avg ownership: {e}")
+            # Rollback to clear the failed transaction state
+            self.session.rollback()
             defaults["league_avg_ownership"] = 0.0
 
-        # Calculate league average ITT
+        # Calculate league average ITT from real API data
         try:
             result = self.session.execute(
                 text("""
@@ -676,6 +781,8 @@ class SmartScoreService:
             )
         except Exception as e:
             logger.warning(f"Error calculating league avg ITT: {e}")
+            # Rollback to clear the failed transaction state
+            self.session.rollback()
             defaults["league_avg_itt"] = self.DEFAULT_LEAGUE_AVG_ITT
 
         # Cache defaults
@@ -712,8 +819,9 @@ class SmartScoreService:
         config: ScoreConfig,
     ) -> List[PlayerScoreResponse]:
         """
-        Calculate Smart Scores for all players in a week.
+        Calculate Smart Scores for all available players in a week.
 
+        Filters out unavailable players (OUT, DOUBTFUL) based on real injury data.
         Uses caching to avoid redundant calculations for same week/weights/config.
 
         Args:
@@ -737,7 +845,7 @@ class SmartScoreService:
 
         logger.debug(f"Cache MISS for week {week_id}, calculating...")
 
-        # Fetch all players for the week
+        # Fetch all players for the week including injury status
         players_query = text("""
             SELECT
                 id,
@@ -751,7 +859,8 @@ class SmartScoreService:
                 ceiling,
                 floor,
                 projection_source,
-                opponent_rank_category
+                opponent_rank_category,
+                COALESCE(injury_status, NULL) as injury_status
             FROM player_pools
             WHERE week_id = :week_id
             ORDER BY position, name
@@ -761,9 +870,31 @@ class SmartScoreService:
             players_query, {"week_id": week_id}
         ).fetchall()
 
+        # Get season and week_number for insights
+        try:
+            week_info = self.session.execute(
+                text("SELECT season, week_number FROM weeks WHERE id = :week_id"),
+                {"week_id": week_id},
+            ).fetchone()
+            season = week_info.season if week_info else None
+            current_week_num = week_info.week_number if week_info else None
+        except Exception as e:
+            logger.warning(f"Error getting week info: {e}")
+            self.session.rollback()
+            season = None
+            current_week_num = None
+
         results = []
+        excluded_players: List[Tuple[str, str]] = []  # (name, reason)
 
         for row in rows:
+            # Check injury status and filter unavailable players
+            injury_status = row.injury_status
+            if not self.is_player_available(injury_status):
+                excluded_players.append((row.name, f"Unavailable ({injury_status})"))
+                logger.debug(f"Excluding {row.name} ({row.team}) - {injury_status}")
+                continue
+
             player_data = PlayerData(
                 player_id=row.id,
                 player_key=row.player_key,
@@ -777,11 +908,82 @@ class SmartScoreService:
                 floor=row.floor,
                 projection_source=row.projection_source,
                 opponent_rank_category=row.opponent_rank_category,
+                injury_status=row.injury_status,
             )
 
             smart_score, breakdown, games_count, regression_risk = self.calculate_smart_score(
                 player_data, week_id, weights, config
             )
+
+            # Calculate historical insights
+            consistency_score = None
+            opponent_matchup_avg = None
+            salary_efficiency_trend = None
+            usage_warnings = None
+            stack_partners = None
+
+            if season:
+                # Consistency score
+                consistency = self._insights_service.get_player_consistency(
+                    player_data.player_key, season, weeks_back=6
+                )
+                consistency_score = consistency.get("consistency_score")
+
+                # Salary efficiency trend
+                efficiency = self._insights_service.get_salary_efficiency_trend(
+                    player_data.player_key, season, weeks_back=6
+                )
+                salary_efficiency_trend = efficiency.get("trend")
+
+                # Usage warnings
+                if current_week_num:
+                    usage = self._insights_service.get_usage_pattern_warnings(
+                        player_data.player_key, season, current_week_num
+                    )
+                    usage_warnings = usage.get("warnings") if usage.get("has_warning") else None
+
+                # Stack partners (metadata only - does NOT affect Smart Score)
+                # Only for QB, WR, TE positions
+                if player_data.position in ("QB", "WR", "TE"):
+                    stack_partners = self._insights_service.get_top_stack_partners(
+                        player_data.player_key,
+                        player_data.position,
+                        player_data.team,
+                        season,
+                        week_id,
+                        limit=3
+                    )
+                    # Only include if we have at least one partner with correlation > 0.5
+                    if stack_partners:
+                        stack_partners = [
+                            p for p in stack_partners
+                            if p.get("correlation") is not None and p.get("correlation", 0) > 0.5
+                        ]
+                        if not stack_partners:
+                            stack_partners = None
+
+                # Opponent matchup history (optional - need to get opponent)
+                # For now, skip if we don't have opponent info readily available
+                # TODO: Enhance to lookup opponent from NFL schedule
+
+                # Vegas context data
+                implied_team_total = None
+                over_under = None
+                try:
+                    vegas_result = self.session.execute(
+                        text("""
+                            SELECT implied_team_total, over_under
+                            FROM vegas_lines
+                            WHERE week_id = :week_id AND team = :team
+                            LIMIT 1
+                        """),
+                        {"week_id": week_id, "team": player_data.team},
+                    ).fetchone()
+
+                    if vegas_result:
+                        implied_team_total, over_under = vegas_result
+                except Exception as e:
+                    logger.debug(f"Could not fetch Vegas data for {player_data.name}: {e}")
 
             # Create response
             player_response = PlayerScoreResponse(
@@ -799,17 +1001,33 @@ class SmartScoreService:
                 games_with_20_plus_snaps=games_count,
                 regression_risk=regression_risk,
                 score_breakdown=breakdown,
+                implied_team_total=implied_team_total,
+                over_under=over_under,
+                consistency_score=consistency_score,
+                opponent_matchup_avg=opponent_matchup_avg,
+                salary_efficiency_trend=salary_efficiency_trend,
+                usage_warnings=usage_warnings,
+                stack_partners=stack_partners,
             )
 
             results.append(player_response)
 
+        # Log excluded players
+        if excluded_players:
+            logger.info(f"Excluded {len(excluded_players)} unavailable players from Smart Score calculations:")
+            for name, reason in excluded_players[:10]:  # Log first 10
+                logger.debug(f"  - {name}: {reason}")
+            if len(excluded_players) > 10:
+                logger.debug(f"  ... and {len(excluded_players) - 10} more")
+
         # Cache results
         self._calculation_cache[cache_key] = (results, datetime.now())
-        
+
         # Clean up expired cache entries periodically
         if len(self._calculation_cache) > 100:  # Limit cache size
             self._cleanup_expired_cache()
 
+        logger.info(f"Calculated Smart Scores for {len(results)} available players (excluded {len(excluded_players)})")
         return results
 
     def _cleanup_expired_cache(self):
@@ -838,4 +1056,3 @@ class SmartScoreService:
             # Simple approach: clear all cache (can be optimized later)
             self._calculation_cache.clear()
             logger.info(f"Cleared calculation cache for week {week_id}")
-

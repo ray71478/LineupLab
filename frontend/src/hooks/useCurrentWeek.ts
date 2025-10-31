@@ -59,8 +59,9 @@ export const useCurrentWeek = (): UseCurrentWeekReturn => {
         if (result.success && result.week_details) {
           setData(result.week_details);
 
-          // Update store if current week changed
-          if (store.currentWeek !== result.current_week) {
+          // Only auto-update if no week is manually selected by the user
+          // This prevents overriding user selections
+          if (store.currentWeek === null && result.current_week) {
             store.setCurrentWeek(result.current_week);
           }
         } else {

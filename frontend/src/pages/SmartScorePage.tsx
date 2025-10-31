@@ -47,8 +47,10 @@ export const SmartScorePage: React.FC = () => {
 
   // Weight profile management
   const {
+    profiles,
     currentWeights,
     currentConfig,
+    currentProfile,
     isLoading: profilesLoading,
     error: profilesError,
     loadDefaultProfile,
@@ -69,6 +71,8 @@ export const SmartScorePage: React.FC = () => {
   const [localPlayers, setLocalPlayers] = useState<PlayerScoreResponse[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
+  const [isCalculatingInitial, setIsCalculatingInitial] = useState(false);
+  const [defaultProfileLoadAttempted, setDefaultProfileLoadAttempted] = useState(false);
 
   // Snapshot management
   const {
@@ -80,9 +84,54 @@ export const SmartScorePage: React.FC = () => {
     hasSnapshot,
   } = useScoreSnapshot();
 
-  // Calculate scores when week or weights change
+  // Reset initialization when week changes
   useEffect(() => {
-    if (weekId && currentWeights && !isInitialized) {
+    if (weekId) {
+      setIsInitialized(false);
+      setIsCalculatingInitial(false);
+      // Don't reset defaultProfileLoadAttempted - it's per session, not per week
+    }
+  }, [weekId]);
+
+  // Track when default profile load attempt has completed
+  useEffect(() => {
+    // When currentProfile is set, it means the default profile load attempt has completed successfully
+    // When profilesLoading becomes false AND currentProfile is still null, the default profile
+    // load attempt has completed but failed (falling back to DEFAULT_WEIGHTS)
+    if (currentProfile !== null) {
+      setDefaultProfileLoadAttempted(true);
+    } else if (!profilesLoading && !defaultProfileLoadAttempted) {
+      // Profiles have loaded, but default profile hasn't loaded yet - wait a bit more
+      // Give the default profile useEffect time to complete (it runs independently)
+      const timeout = setTimeout(() => {
+        setDefaultProfileLoadAttempted(true);
+      }, 100); // Small delay to allow default profile useEffect to complete
+      return () => clearTimeout(timeout);
+    }
+  }, [currentProfile, profilesLoading, defaultProfileLoadAttempted]);
+
+  // Calculate scores when week or weights change
+  // Wait for default profile to load before calculating initial scores
+  // This ensures scores are calculated with the default profile weights, not hardcoded defaults
+  useEffect(() => {
+    // Only calculate initial scores if:
+    // 1. We have a weekId
+    // 2. We have currentWeights
+    // 3. Default profile load attempt has completed (currentProfile set OR profiles loaded)
+    // 4. We haven't initialized yet
+    // 5. We're not already calculating
+    //
+    // The key: Wait for the default profile load attempt to complete before calculating.
+    // This ensures we use the loaded default profile weights, not the hardcoded DEFAULT_WEIGHTS.
+    const shouldCalculate = 
+      weekId &&
+      currentWeights &&
+      defaultProfileLoadAttempted &&
+      !isInitialized &&
+      !isCalculatingInitial;
+    
+    if (shouldCalculate) {
+      setIsCalculatingInitial(true);
       const initialCalculation = async () => {
         try {
           const calculatedPlayers = await calculateScores(weekId, currentWeights, currentConfig);
@@ -90,11 +139,14 @@ export const SmartScorePage: React.FC = () => {
           setIsInitialized(true);
         } catch (err) {
           console.error('Failed to calculate initial scores:', err);
+        } finally {
+          setIsCalculatingInitial(false);
         }
       };
       initialCalculation();
     }
-  }, [weekId, currentWeights, currentConfig, isInitialized, calculateScores]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekId, currentWeights, currentConfig, isInitialized, profilesLoading, currentProfile, defaultProfileLoadAttempted]); // isCalculatingInitial is intentionally excluded - it's a guard, not a trigger
 
   // Update local players when players from hook change
   useEffect(() => {
@@ -145,6 +197,8 @@ export const SmartScorePage: React.FC = () => {
     try {
       await loadDefaultProfile();
       setIsInitialized(false);
+      setIsCalculatingInitial(false);
+      setDefaultProfileLoadAttempted(false); // Reset flag to allow recalculation with new default profile
     } catch (err) {
       console.error('Failed to load default profile:', err);
     }
