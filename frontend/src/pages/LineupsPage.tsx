@@ -195,7 +195,11 @@ export const LineupsPage: React.FC = () => {
         {/* Progress Indicator */}
         {isGenerating && (
           <React.Suspense fallback={<CircularProgress />}>
-            <LineupGenerationProgress isGenerating={isGenerating} />
+            <LineupGenerationProgress 
+              isGenerating={isGenerating}
+              numLineups={settings.num_lineups}
+              numPlayers={selectedPlayers?.length || undefined}
+            />
           </React.Suspense>
         )}
 

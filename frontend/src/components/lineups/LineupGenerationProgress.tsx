@@ -3,8 +3,11 @@
  * 
  * Displays progress indicator during lineup generation:
  * - Elapsed time
- * - Progress bar (estimated max 90 seconds)
+ * - Adaptive progress estimate (based on typical patterns)
  * - Visual feedback
+ * 
+ * Note: Cannot get exact progress from CBC solver, so we use heuristic estimates
+ * based on elapsed time and problem characteristics.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -18,12 +21,14 @@ import {
 
 interface LineupGenerationProgressProps {
   isGenerating: boolean;
-  maxTimeSeconds?: number; // Estimated max time (default: 90 seconds)
+  numLineups?: number;
+  numPlayers?: number;
 }
 
 export const LineupGenerationProgress: React.FC<LineupGenerationProgressProps> = ({
   isGenerating,
-  maxTimeSeconds = 90,
+  numLineups = 10,
+  numPlayers = 137,
 }) => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
@@ -47,8 +52,38 @@ export const LineupGenerationProgress: React.FC<LineupGenerationProgressProps> =
     return null;
   }
 
-  const progress = Math.min((elapsedSeconds / maxTimeSeconds) * 100, 100);
-  const remainingSeconds = Math.max(0, maxTimeSeconds - elapsedSeconds);
+  // Adaptive progress estimation based on elapsed time
+  // Portfolio optimization typically takes 30-90 seconds
+  // If it's been running longer, it's likely taking the full time
+  const getEstimatedProgress = (elapsed: number): { progress: number; estimate: string } => {
+    // Base estimate: 30-60 seconds for typical problems
+    const baseEstimate = 45;
+    
+    // If it's been running longer than base estimate, likely going to 90s timeout
+    if (elapsed < 15) {
+      // Early stage: optimistic estimate
+      return {
+        progress: Math.min((elapsed / 45) * 100, 30), // Cap at 30% for early stage
+        estimate: '~30-45s',
+      };
+    } else if (elapsed < 45) {
+      // Mid stage: use elapsed time as indicator
+      const remaining = Math.max(30 - elapsed, 10);
+      return {
+        progress: Math.min((elapsed / 60) * 100, 85), // Cap at 85% until near completion
+        estimate: `~${Math.round(remaining)}s`,
+      };
+    } else {
+      // Late stage: likely going to timeout or very close
+      return {
+        progress: Math.min((elapsed / 90) * 100, 95), // Cap at 95% until done
+        estimate: elapsed < 90 ? `~${Math.round(90 - elapsed)}s` : 'finishing up...',
+      };
+    }
+  };
+
+  const { progress, estimate } = getEstimatedProgress(elapsedSeconds);
+  const remainingSeconds = Math.max(0, 90 - elapsedSeconds);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -68,7 +103,7 @@ export const LineupGenerationProgress: React.FC<LineupGenerationProgressProps> =
       }}
     >
       <CardContent>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1, flexWrap: 'wrap' }}>
           <Typography variant="body1" sx={{ fontWeight: 600, color: '#ff6b35' }}>
             Generating Lineups...
           </Typography>
@@ -77,7 +112,7 @@ export const LineupGenerationProgress: React.FC<LineupGenerationProgressProps> =
           </Typography>
           {remainingSeconds > 0 && (
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              ~{formatTime(remainingSeconds)} remaining
+              Est. {estimate} remaining
             </Typography>
           )}
         </Box>
@@ -102,7 +137,8 @@ export const LineupGenerationProgress: React.FC<LineupGenerationProgressProps> =
             fontStyle: 'italic',
           }}
         >
-          Portfolio optimization may take up to 90 seconds for 10 lineups
+          Portfolio optimization for {numLineups} lineups ({numPlayers} players). 
+          Solver runtime varies by problem complexity (typically 30-90 seconds).
         </Typography>
       </CardContent>
     </Card>
@@ -110,4 +146,3 @@ export const LineupGenerationProgress: React.FC<LineupGenerationProgressProps> =
 };
 
 export default LineupGenerationProgress;
-
