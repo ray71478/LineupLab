@@ -111,28 +111,53 @@ wait_for_postgres() {
 }
 
 # ------------------------------------------
+# Activate virtual environment if it exists
+# ------------------------------------------
+activate_venv() {
+    if [ -d "venv" ]; then
+        print_info "Activating virtual environment..."
+        source venv/bin/activate
+    elif [ -d ".venv" ]; then
+        print_info "Activating virtual environment..."
+        source .venv/bin/activate
+    else
+        print_warning "No virtual environment found. Using system Python."
+    fi
+}
+
+# ------------------------------------------
 # Run Alembic migrations
 # ------------------------------------------
 run_migrations() {
     print_header "Running Alembic migrations..."
 
-    # Check if alembic is installed
-    if ! command -v alembic &> /dev/null; then
-        print_error "Alembic is not installed. Run: pip install -r requirements.txt"
+    # Activate venv if it exists
+    activate_venv
+
+    # Check if alembic is installed (try both command and python module)
+    if ! command -v alembic &> /dev/null && ! python -m alembic --help &> /dev/null; then
+        print_error "Alembic is not installed. Run: pip install -r backend/requirements.txt"
         exit 1
+    fi
+
+    # Use python -m alembic if available, otherwise use alembic command
+    if python -m alembic --help &> /dev/null; then
+        ALEMBIC_CMD="python -m alembic"
+    else
+        ALEMBIC_CMD="alembic"
     fi
 
     # Check current migration version
     print_info "Checking current migration version..."
-    alembic current
+    $ALEMBIC_CMD current
 
     # Run migrations
     print_info "Upgrading to latest migration..."
-    alembic upgrade head
+    $ALEMBIC_CMD upgrade head
 
     # Verify migrations completed
     print_info "Current migration version after upgrade:"
-    alembic current
+    $ALEMBIC_CMD current
 
     print_success "Migrations completed successfully!"
 }
@@ -142,6 +167,9 @@ run_migrations() {
 # ------------------------------------------
 seed_development_data() {
     print_header "Seeding development data..."
+
+    # Activate venv if it exists
+    activate_venv
 
     # Check if seed script exists
     SEED_SCRIPT="backend/scripts/seed_development_data.py"

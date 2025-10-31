@@ -91,20 +91,33 @@ async def generate_lineups(
         # Filter by selected player IDs if provided
         if request.selected_player_ids is not None and len(request.selected_player_ids) > 0:
             selected_ids_set = set(request.selected_player_ids)
+
+            logger.info(
+                f"Filtering to {len(selected_ids_set)} selected player IDs from {len(players_with_scores)} total players"
+            )
+
+            before_count = len(players_with_scores)
             players_with_scores = [
                 p for p in players_with_scores
                 if p.player_id in selected_ids_set
             ]
-            
+
             if not players_with_scores:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"No matching players found for selected player IDs",
                 )
-            
+
             logger.info(
-                f"Filtered to {len(players_with_scores)} players from {len(selected_ids_set)} selected IDs"
+                f"Filtered {before_count} → {len(players_with_scores)} players "
+                f"({len(selected_ids_set) - len(players_with_scores)} selected IDs not found in player pool)"
             )
+
+            # Log position breakdown after filtering
+            pos_counts = {}
+            for p in players_with_scores:
+                pos_counts[p.position] = pos_counts.get(p.position, 0) + 1
+            logger.info(f"Position breakdown after filter: {pos_counts}")
         
         # Generate lineups
         optimizer_service = LineupOptimizerService(db)

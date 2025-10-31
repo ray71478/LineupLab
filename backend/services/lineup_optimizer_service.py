@@ -225,11 +225,27 @@ class LineupOptimizerService:
     ) -> List[PlayerOptimizationData]:
         """Convert PlayerScoreResponse to PlayerOptimizationData."""
         opt_players = []
-        
+        skipped_null_score = 0
+        skipped_null_salary = 0
+        skipped_zero_salary = 0
+
         for player in players:
+            # Skip players with null smart score
             if player.smart_score is None:
+                skipped_null_score += 1
                 continue
-            
+
+            # Check for data issues
+            if player.salary is None:
+                logger.warning(f"Player {player.name} has NULL salary - skipping")
+                skipped_null_salary += 1
+                continue
+
+            if player.salary == 0:
+                logger.warning(f"Player {player.name} has ZERO salary - skipping")
+                skipped_zero_salary += 1
+                continue
+
             opt_players.append(PlayerOptimizationData(
                 player_id=player.player_id,
                 player_key=player.player_key,
@@ -241,7 +257,13 @@ class LineupOptimizerService:
                 ownership=player.ownership or 0.0,
                 projection=player.projection,
             ))
-        
+
+        if skipped_null_score + skipped_null_salary + skipped_zero_salary > 0:
+            logger.warning(
+                f"Skipped players: {skipped_null_score} null scores, "
+                f"{skipped_null_salary} null salaries, {skipped_zero_salary} zero salaries"
+            )
+
         return opt_players
     
     def _group_by_position(
@@ -346,8 +368,31 @@ class LineupOptimizerService:
             self._add_diversity_penalty(prob, opt_players, player_vars, previous_lineups)
         
         # Solve
-        prob.solve(pulp.PULP_CBC_CMD(msg=0))  # Silent mode
-        
+        # TEMPORARILY ENABLE VERBOSE OUTPUT FOR DEBUGGING
+        solver = pulp.PULP_CBC_CMD(msg=1)  # Verbose mode - will show constraint details
+        prob.solve(solver)
+
+        # Log detailed problem info for first lineup
+        if lineup_number == 1:
+            logger.info(f"=== LINEUP OPTIMIZER DEBUG INFO ===")
+            logger.info(f"Total players in optimization: {len(opt_players)}")
+            logger.info(f"Total constraints: {len(prob.constraints)}")
+            logger.info(f"Solver status: {prob.status} ({pulp.LpStatus[prob.status]})")
+
+            # Log sample players
+            logger.info("Sample players (first 5 by position):")
+            sample_by_pos = {}
+            for p in opt_players[:20]:
+                if p.position not in sample_by_pos:
+                    sample_by_pos[p.position] = []
+                if len(sample_by_pos[p.position]) < 3:
+                    sample_by_pos[p.position].append(
+                        f"{p.name} ({p.team}) ${p.salary} score:{p.smart_score:.1f}"
+                    )
+            for pos, players in sample_by_pos.items():
+                for player_str in players:
+                    logger.info(f"  {pos}: {player_str}")
+
         if prob.status != pulp.LpStatusOptimal:
             # Log detailed constraint info for debugging
             logger.warning(
@@ -355,13 +400,13 @@ class LineupOptimizerService:
                 f"Position counts: {dict((pos, len(players)) for pos, players in players_by_position.items())}, "
                 f"Total players: {len(opt_players)}, "
                 f"Settings: max_team={settings.max_players_per_team}, max_game={settings.max_players_per_game}, "
-                f"QB+WR stack={settings.stacking_rules.get('qb_wr_stack_enabled', False) if settings.stacking_rules else False}, "
-                f"Bring-back={settings.stacking_rules.get('bring_back_enabled', False) if settings.stacking_rules else False}"
+                f"QB+WR stack={settings.stacking_rules.qb_wr_stack_enabled if settings.stacking_rules else False}, "
+                f"Bring-back={settings.stacking_rules.bring_back_enabled if settings.stacking_rules else False}"
             )
             
             # Try to identify which constraint might be causing issues
             if settings.stacking_rules:
-                if settings.stacking_rules.get('qb_wr_stack_enabled', False):
+                if settings.stacking_rules.qb_wr_stack_enabled:
                     qb_players = [p for p in opt_players if p.position == 'QB']
                     wr_players = [p for p in opt_players if p.position == 'WR']
                     qb_teams_with_wrs = {}
@@ -370,7 +415,7 @@ class LineupOptimizerService:
                         qb_teams_with_wrs[qb.team] = len(team_wrs)
                     logger.warning(f"QB+WR stack check - QBs with WRs from same team: {qb_teams_with_wrs}")
                 
-                if settings.stacking_rules.get('bring_back_enabled', False):
+                if settings.stacking_rules.bring_back_enabled:
                     logger.warning(f"Bring-back enabled - game_info has {len(game_info)} teams")
             
             return None
@@ -403,14 +448,25 @@ class LineupOptimizerService:
             return None
         
         avg_ownership = total_ownership / len(selected_players) if selected_players else 0.0
-        
-        return GeneratedLineup(
-            lineup_number=lineup_number,
-            players=selected_players,
-            total_salary=total_salary,
-            projected_score=total_smart_score,
-            avg_ownership=avg_ownership,
-        )
+
+        # Convert ownership from percentage (0-100) to decimal (0-1) if needed
+        if avg_ownership > 1.0:
+            avg_ownership = avg_ownership / 100.0
+
+        logger.info(f"Lineup {lineup_number}: {len(selected_players)} players, salary=${total_salary}, score={total_smart_score:.1f}, avg_own={avg_ownership:.3f}")
+
+        try:
+            return GeneratedLineup(
+                lineup_number=lineup_number,
+                players=selected_players,
+                total_salary=total_salary,
+                projected_score=total_smart_score,
+                avg_ownership=avg_ownership,
+            )
+        except Exception as e:
+            logger.error(f"Pydantic validation error creating GeneratedLineup: {e}")
+            logger.error(f"  lineup_number={lineup_number}, players={len(selected_players)}, total_salary={total_salary}, projected_score={total_smart_score}, avg_ownership={avg_ownership}")
+            raise
     
     def _apply_strategy_mode(
         self,
@@ -572,7 +628,7 @@ class LineupOptimizerService:
             return
         
         # QB + WR stack rule
-        if settings.stacking_rules.get('qb_wr_stack_enabled', False):
+        if settings.stacking_rules.qb_wr_stack_enabled:
             qb_players = [p for p in players if p.position == 'QB']
             wr_players = [p for p in players if p.position == 'WR']
             
@@ -593,7 +649,7 @@ class LineupOptimizerService:
         # Bring-back constraint (opponent team player)
         # TEMPORARILY DISABLED - This constraint is making the problem infeasible
         # TODO: Fix bring-back logic to be less restrictive
-        if False and settings.stacking_rules.get('bring_back_enabled', False):
+        if False and settings.stacking_rules.bring_back_enabled:
             # Group players by their game (team + opponent)
             games: Dict[tuple, List[PlayerOptimizationData]] = defaultdict(list)
             
