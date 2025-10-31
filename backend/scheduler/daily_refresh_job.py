@@ -18,6 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from backend.services.theoddsapi_service import TheOddsAPIService
+from backend.services.espn_service import ESPNService
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class DailyDataRefreshJob:
         """
         self.db = db_session
         self.service: Optional[TheOddsAPIService] = None
+        self.espn_service: Optional[ESPNService] = None
         self.logger = logger
         self.start_time: Optional[datetime] = None
         self.results: Dict[str, Any] = {}
@@ -66,11 +68,12 @@ class DailyDataRefreshJob:
         self.start_time = datetime.utcnow()
         self.logger.info(f"Starting daily Vegas lines refresh at {self.start_time}")
 
-        # Initialize service
         try:
+            # Initialize services
             self.service = TheOddsAPIService(self.db)
+            self.espn_service = ESPNService(self.db)
         except ValueError as e:
-            self.logger.error(f"Failed to initialize TheOddsAPIService: {str(e)}")
+            self.logger.error(f"Failed to initialize services: {str(e)}")
             return {
                 "success": False,
                 "start_time": self.start_time,
@@ -80,8 +83,9 @@ class DailyDataRefreshJob:
             }
 
         try:
-            # Execute refresh step
+            # Execute refresh steps
             await self._fetch_and_store_games()
+            await self._refresh_espn_opponents()
 
             # Compile results
             end_time = datetime.utcnow()
@@ -116,6 +120,8 @@ class DailyDataRefreshJob:
             # Cleanup
             if self.service:
                 await self.service.close()
+            if self.espn_service:
+                await self.espn_service.close()
 
     async def _fetch_and_store_games(self) -> None:
         """Fetch games with all odds and store in vegas_lines for ALL upcoming weeks."""
@@ -388,3 +394,103 @@ class DailyDataRefreshJob:
             stored = 0
 
         return stored
+
+    async def _refresh_espn_opponents(self) -> None:
+        """
+        Refresh opponent data from ESPN API for all upcoming weeks.
+        
+        ALWAYS refreshes opponent data from ESPN API (primary source), overwriting
+        any existing opponent data in vegas_lines. ESPN is more reliable than
+        the opponent data from TheOddsAPI.
+        """
+        try:
+            self.logger.info("Refreshing opponents from ESPN API (primary source)...")
+            
+            # Find all upcoming weeks with vegas_lines data
+            result = self.db.execute(text("""
+                SELECT DISTINCT vl.week_id, w.season, w.week_number
+                FROM vegas_lines vl
+                JOIN weeks w ON vl.week_id = w.id
+                WHERE w.nfl_slate_date >= CURRENT_DATE
+                ORDER BY vl.week_id
+            """))
+            
+            weeks_to_update = result.fetchall()
+            if not weeks_to_update:
+                self.logger.info("No upcoming weeks with vegas_lines data found")
+                self.results["espn_opponents"] = {
+                    "checked": 0,
+                    "updated": 0,
+                    "errors": 0,
+                }
+                return
+            
+            updated_count = 0
+            error_count = 0
+            checked_count = 0
+            
+            for week_id, season, week_number in weeks_to_update:
+                try:
+                    # Get ALL teams for this week (refresh all, not just missing)
+                    teams_result = self.db.execute(text("""
+                        SELECT DISTINCT team
+                        FROM vegas_lines
+                        WHERE week_id = :week_id
+                    """), {"week_id": week_id})
+                    
+                    teams = [row[0] for row in teams_result.fetchall()]
+                    checked_count += len(teams)
+                    
+                    for team in teams:
+                        try:
+                            # Get opponent from ESPN (primary source)
+                            opponent = await self.espn_service.get_opponent_for_team(
+                                team, season, week_number
+                            )
+                            
+                            if opponent:
+                                # ALWAYS update vegas_lines with ESPN opponent data (overwrites existing)
+                                self.db.execute(text("""
+                                    UPDATE vegas_lines
+                                    SET opponent = :opponent,
+                                        updated_at = :now
+                                    WHERE week_id = :week_id 
+                                      AND team = :team
+                                """), {
+                                    "opponent": opponent,
+                                    "week_id": week_id,
+                                    "team": team,
+                                    "now": datetime.utcnow(),
+                                })
+                                updated_count += 1
+                                self.logger.debug(f"Updated opponent for {team} in week {week_number}: {opponent} (from ESPN)")
+                            else:
+                                self.logger.debug(f"Could not find opponent for {team} in week {week_number} from ESPN")
+                                
+                        except Exception as e:
+                            self.logger.debug(f"Error fetching opponent for {team} in week {week_number}: {e}")
+                            error_count += 1
+                    
+                    # Commit after each week
+                    self.db.commit()
+                    
+                except Exception as e:
+                    self.logger.error(f"Error updating opponents for week {week_id}: {e}")
+                    self.db.rollback()
+                    error_count += 1
+            
+            self.results["espn_opponents"] = {
+                "checked": checked_count,
+                "updated": updated_count,
+                "errors": error_count,
+            }
+            
+            self.logger.info(f"ESPN opponent refresh complete: {updated_count} teams updated (checked {checked_count} total)")
+            
+        except Exception as e:
+            self.logger.error(f"Error in _refresh_espn_opponents: {str(e)}")
+            self.results["espn_opponents"] = {
+                "checked": 0,
+                "updated": 0,
+                "errors": 1,
+            }

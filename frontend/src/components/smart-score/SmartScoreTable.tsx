@@ -32,7 +32,10 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  Tooltip,
+  IconButton,
 } from '@mui/material';
+import InfoIcon from '@mui/icons-material/Info';
 import {
   useReactTable,
   getCoreRowModel,
@@ -106,6 +109,37 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
     
     return filtered;
   }, [players, positionFilter, consistencyFilter, valueTrendFilter]);
+
+  // Helper function to create tooltip header
+  const createTooltipHeader = (title: string, tooltipContent: React.ReactNode) => (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+      <Typography variant="body2" component="span">
+        {title}
+      </Typography>
+      <Tooltip
+        title={tooltipContent}
+        arrow
+        placement="top"
+      >
+        <IconButton
+          size="small"
+          sx={{
+            p: 0,
+            minWidth: 16,
+            width: 16,
+            height: 16,
+            color: 'text.secondary',
+            '&:hover': {
+              color: 'text.primary',
+            },
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <InfoIcon sx={{ fontSize: '0.875rem' }} />
+        </IconButton>
+      </Tooltip>
+    </Box>
+  );
 
   // Column definitions
   const columns = useMemo<ColumnDef<PlayerScoreResponse>[]>(
@@ -277,7 +311,59 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
       {
         id: 'consistency_score',
         accessorKey: 'consistency_score',
-        header: 'Consistency',
+        header: () => (
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Typography variant="body2" component="span">
+              Consistency
+            </Typography>
+            <Tooltip
+              title={
+                <Box>
+                  <Typography variant="caption" component="div" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Coefficient of Variation (CV)
+                  </Typography>
+                  <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+                    Measures scoring consistency over the last 6 games with 20+ snaps.
+                  </Typography>
+                  <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5, fontWeight: 600 }}>
+                    Lower is better:
+                  </Typography>
+                  <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+                    • &lt; 0.3 = Very consistent (Green)
+                  </Typography>
+                  <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+                    • 0.3-0.6 = Moderately consistent (Orange)
+                  </Typography>
+                  <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+                    • &gt; 0.6 = Volatile/Inconsistent (Red)
+                  </Typography>
+                  <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5, fontStyle: 'italic' }}>
+                    CV = Standard Deviation ÷ Average Points
+                  </Typography>
+                </Box>
+              }
+              arrow
+              placement="top"
+            >
+              <IconButton
+                size="small"
+                sx={{
+                  p: 0,
+                  minWidth: 16,
+                  width: 16,
+                  height: 16,
+                  color: 'text.secondary',
+                  '&:hover': {
+                    color: 'text.primary',
+                  },
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <InfoIcon sx={{ fontSize: '0.875rem' }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        ),
         size: 90,
         cell: ({ getValue, row }) => {
           const cv = getValue() as number | null | undefined;
@@ -307,18 +393,24 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         },
       },
       {
-        id: 'opponent_matchup_avg',
-        accessorKey: 'opponent_matchup_avg',
+        id: 'opponent',
+        accessorKey: 'opponent',
         header: 'vs Opp',
         size: 70,
         cell: ({ getValue }) => {
-          const avg = getValue() as number | null | undefined;
-          if (avg === null || avg === undefined) {
-            return <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>-</Typography>;
+          const opponent = getValue() as string | null | undefined;
+          if (!opponent) {
+            return <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>-</Typography>;
           }
           return (
-            <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-              {avg.toFixed(1)}
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                fontSize: '0.75rem',
+                fontWeight: 500,
+              }}
+            >
+              {opponent}
             </Typography>
           );
         },
@@ -326,7 +418,35 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
       {
         id: 'salary_efficiency_trend',
         accessorKey: 'salary_efficiency_trend',
-        header: 'Value Trend',
+        header: () => createTooltipHeader(
+          'Value Trend',
+          <Box>
+            <Typography variant="caption" component="div" sx={{ fontWeight: 600, mb: 0.5 }}>
+              Salary Efficiency Trend
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+              Compares value score (points per $1,000 salary) over recent weeks.
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5, fontWeight: 600 }}>
+              Trend calculation:
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+              Compares last 3 weeks vs previous 3 weeks.
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5 }}>
+              <Box component="span" sx={{ fontWeight: 600 }}>▲</Box> = Trending up (Green) - Recent value &gt; 10% higher
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+              <Box component="span" sx={{ fontWeight: 600 }}>→</Box> = Stable (Gray) - Within 10% of previous average
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+              <Box component="span" sx={{ fontWeight: 600 }}>▼</Box> = Trending down (Red) - Recent value &lt; 10% of previous
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5, fontStyle: 'italic' }}>
+              Value Score = (Points ÷ Salary) × 1,000
+            </Typography>
+          </Box>
+        ),
         size: 80,
         cell: ({ getValue }) => {
           const trend = getValue() as 'up' | 'down' | 'stable' | null | undefined;
@@ -360,7 +480,32 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
       {
         id: 'usage_warnings',
         accessorFn: (row) => row.usage_warnings,
-        header: 'Usage',
+        header: () => createTooltipHeader(
+          'Usage',
+          <Box>
+            <Typography variant="caption" component="div" sx={{ fontWeight: 600, mb: 0.5 }}>
+              Usage Pattern Warnings
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+              Analyzes snaps and touches over last 4 games to detect declining usage.
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5 }}>
+              <Box component="span" sx={{ fontWeight: 600 }}>Applies to:</Box> RB, WR, TE only (not QB)
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5, fontWeight: 600 }}>
+              Warning triggers:
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+              • Snap count declining 15%+ (last 2 weeks vs weeks 3-4)
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+              • Touches declining 15%+ (last 2 weeks vs weeks 3-4)
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5 }}>
+              Shows warning badge if either trend detected. No badge = stable usage.
+            </Typography>
+          </Box>
+        ),
         size: 70,
         cell: ({ row }) => {
           const player = row.original;
@@ -387,7 +532,35 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
       {
         id: 'games_with_20_plus_snaps',
         accessorKey: 'games_with_20_plus_snaps',
-        header: '20+ Snaps',
+        header: () => createTooltipHeader(
+          '20+ Snaps',
+          <Box>
+            <Typography variant="caption" component="div" sx={{ fontWeight: 600, mb: 0.5 }}>
+              Games with 20+ Snaps
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+              Count of recent games where player had 20 or more snaps.
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5, fontWeight: 600 }}>
+              Used for:
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+              • W5 Trend Adjustment calculation
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+              • Position-specific trend metrics (target share, snap %, etc.)
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5 }}>
+              <Box component="span" sx={{ fontWeight: 600 }}>Minimum:</Box> 2 games needed for trend calculation
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+              <Box component="span" sx={{ fontWeight: 600 }}>Maximum:</Box> Analyzes up to last 4 games
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5, fontStyle: 'italic' }}>
+              Games with &lt; 20 snaps excluded (incomplete participation)
+            </Typography>
+          </Box>
+        ),
         size: 70,
         cell: ({ getValue }) => (
           <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
@@ -398,7 +571,35 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
       {
         id: 'regression_risk',
         accessorFn: (row) => row.regression_risk,
-        header: 'Risk',
+        header: () => createTooltipHeader(
+          'Risk',
+          <Box>
+            <Typography variant="caption" component="div" sx={{ fontWeight: 600, mb: 0.5 }}>
+              Regression Risk (80-20 Rule)
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+              Flags WR players who scored exceptionally high last week.
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5 }}>
+              <Box component="span" sx={{ fontWeight: 600 }}>Applies to:</Box> WR position only
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5, fontWeight: 600 }}>
+              Rule logic:
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem' }}>
+              If WR scored ≥ 20.0 points last week (default threshold), they're flagged for regression risk.
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5 }}>
+              <Box component="span" sx={{ fontWeight: 600 }}>Why:</Box> High-scoring games are often outliers. Players typically regress toward their average.
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5 }}>
+              <Box component="span" sx={{ fontWeight: 600 }}>Visual indicator:</Box> Orange "Risk" badge appears when flagged
+            </Typography>
+            <Typography variant="caption" component="div" sx={{ fontSize: '0.7rem', mt: 0.5, fontStyle: 'italic' }}>
+              Note: This is a visual flag only. W6 penalty weight controls actual impact on Smart Score.
+            </Typography>
+          </Box>
+        ),
         size: 60,
         cell: ({ row }) => {
           const player = row.original;
@@ -413,6 +614,49 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
             />
           ) : (
             <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>-</Typography>
+          );
+        },
+      },
+      {
+        id: 'injury_status',
+        accessorKey: 'injury_status',
+        header: 'Injury',
+        size: 70,
+        cell: ({ getValue }) => {
+          const status = getValue() as string | null | undefined;
+          if (!status) {
+            return <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>-</Typography>;
+          }
+          // Color code injury status
+          const getColor = () => {
+            switch (status.toUpperCase()) {
+              case 'OUT':
+                return '#f44336'; // Red
+              case 'DOUBTFUL':
+                return '#ff9800'; // Orange
+              case 'QUESTIONABLE':
+                return '#ffc107'; // Yellow/Amber
+              case 'PROBABLE':
+                return '#4caf50'; // Green
+              default:
+                return '#e5e7eb'; // Gray
+            }
+          };
+          return (
+            <Chip
+              label={status}
+              size="small"
+              sx={{
+                height: 20,
+                fontSize: '0.65rem',
+                fontWeight: 600,
+                backgroundColor: getColor(),
+                color: '#fff',
+                '& .MuiChip-label': {
+                  padding: '0 6px',
+                },
+              }}
+            />
           );
         },
       },

@@ -22,6 +22,11 @@ export interface RefreshResult {
   games?: RefreshStats;
   team_stats?: RefreshStats;
   gamelogs?: RefreshStats;
+  espn_opponents?: {
+    checked: number;
+    updated: number;
+    errors: number;
+  };
   errors?: string[];
   error?: string;
   message?: string;

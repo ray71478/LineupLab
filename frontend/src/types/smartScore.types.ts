@@ -62,10 +62,12 @@ export interface PlayerScoreResponse {
   over_under?: number | null;
   // Historical insights
   consistency_score?: number | null;
+  opponent?: string | null;
   opponent_matchup_avg?: number | null;
   salary_efficiency_trend?: 'up' | 'down' | 'stable' | null;
   usage_warnings?: string[] | null;
   stack_partners?: StackPartner[] | null;
+  injury_status?: string | null; // PROBABLE, QUESTIONABLE, DOUBTFUL, OUT
 }
 
 export interface WeightProfileResponse {

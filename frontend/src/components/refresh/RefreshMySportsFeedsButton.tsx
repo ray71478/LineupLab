@@ -1,12 +1,13 @@
 /**
  * RefreshMySportsFeedsButton Component
  *
- * Button to manually trigger MySportsFeeds API refresh from the header.
+ * Button to manually trigger API data refresh from the header.
  * Fetches and updates:
  * - Vegas lines (Implied Team Total for W7 factor)
  * - Player injuries (for availability filtering)
  * - Team defensive stats (for W8 factor)
  * - Player game logs (for trend analysis)
+ * - Opponent data from ESPN API (fills missing opponents)
  *
  * Features:
  * - Shows loading spinner during refresh
@@ -53,6 +54,12 @@ export const RefreshMySportsFeedsButton: React.FC<RefreshMySportsFeedsButtonProp
         await fetch('/api/smart-score/cache/invalidate', {
           method: 'POST',
         });
+        
+        // Dispatch custom event to trigger Smart Score recalculation
+        // SmartScorePage listens to this event and recalculates scores
+        window.dispatchEvent(new CustomEvent('dataRefreshComplete', {
+          detail: { refreshResult }
+        }));
       } catch (cacheError) {
         console.warn('Failed to invalidate Smart Score cache:', cacheError);
         // Don't fail the refresh if cache invalidation fails
@@ -148,7 +155,7 @@ export const RefreshMySportsFeedsButton: React.FC<RefreshMySportsFeedsButtonProp
               )}
 
               {/* Statistics */}
-              {(result.injuries || result.games || result.team_stats || result.gamelogs) && (
+              {(result.injuries || result.games || result.team_stats || result.gamelogs || result.espn_opponents) && (
                 <Box>
                   <Box sx={{ fontWeight: 600, marginBottom: 0.5 }}>Updates:</Box>
                   <List dense sx={{ paddingY: 0 }}>
@@ -167,6 +174,16 @@ export const RefreshMySportsFeedsButton: React.FC<RefreshMySportsFeedsButtonProp
                         <ListItemText
                           primary={`Vegas Lines: ${result.games.stored} stored${
                             result.games.errors > 0 ? `, ${result.games.errors} errors` : ''
+                          }`}
+                          primaryTypographyProps={{ fontSize: '0.85rem' }}
+                        />
+                      </ListItem>
+                    )}
+                    {result.espn_opponents && result.espn_opponents.updated > 0 && (
+                      <ListItem sx={{ paddingY: 0, paddingX: 2 }}>
+                        <ListItemText
+                          primary={`ESPN Opponents: ${result.espn_opponents.updated} updated${
+                            result.espn_opponents.errors > 0 ? `, ${result.espn_opponents.errors} errors` : ''
                           }`}
                           primaryTypographyProps={{ fontSize: '0.85rem' }}
                         />

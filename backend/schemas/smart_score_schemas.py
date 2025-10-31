@@ -103,9 +103,11 @@ class PlayerScoreResponse(BaseModel):
 
     # Historical insights
     consistency_score: Optional[float] = Field(None, description="Consistency score (CV, lower is more consistent)")
+    opponent: Optional[str] = Field(None, description="Opponent team abbreviation for this week")
     opponent_matchup_avg: Optional[float] = Field(None, description="Average points vs this week's opponent")
     salary_efficiency_trend: Optional[str] = Field(None, description="Salary efficiency trend: 'up', 'down', or 'stable'")
     usage_warnings: Optional[List[str]] = Field(None, description="Usage pattern warnings (declining snaps/touches)")
+    injury_status: Optional[str] = Field(None, description="Injury status: PROBABLE, QUESTIONABLE, DOUBTFUL, OUT")
 
     # Stack correlation metadata (not affecting Smart Score)
     stack_partners: Optional[List[Dict[str, Any]]] = Field(None, description="Top stack correlation partners (e.g., QB-WR pairs with correlation > 0.5)")

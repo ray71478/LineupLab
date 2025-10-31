@@ -137,6 +137,34 @@ export const SmartScorePage: React.FC = () => {
     }
   }, [weekId]);
 
+  // Listen for data refresh completion and recalculate Smart Scores
+  useEffect(() => {
+    const handleRefreshComplete = async (event: CustomEvent) => {
+      // Only recalculate if we're already initialized (scores calculated at least once)
+      if (weekId && currentWeights && currentConfig && isInitialized) {
+        try {
+          // Store previous scores before recalculation
+          if (localPlayers.length > 0) {
+            createSnapshot(localPlayers);
+          }
+          
+          // Recalculate with updated opponent data from refresh
+          const calculatedPlayers = await calculateScores(weekId, currentWeights, currentConfig);
+          setLocalPlayers(calculatedPlayers);
+          console.log('Smart Scores recalculated after data refresh');
+        } catch (err) {
+          console.error('Failed to recalculate scores after refresh:', err);
+        }
+      }
+    };
+
+    window.addEventListener('dataRefreshComplete', handleRefreshComplete as EventListener);
+
+    return () => {
+      window.removeEventListener('dataRefreshComplete', handleRefreshComplete as EventListener);
+    };
+  }, [weekId, currentWeights, currentConfig, isInitialized, localPlayers, calculateScores, createSnapshot]);
+
   // Track when default profile load attempt has completed
   useEffect(() => {
     // When currentProfile is set, it means the default profile load attempt has completed successfully

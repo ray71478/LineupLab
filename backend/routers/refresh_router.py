@@ -41,14 +41,16 @@ async def refresh_mysportsfeeds(db: Session = Depends(_get_current_db_dependency
 
     This endpoint executes the same refresh job that runs daily at 5:00 AM EST,
     allowing users to fetch fresh Vegas lines, injuries, and defensive stats
-    on-demand from the configuration screen.
+    on-demand from the configuration screen. It also refreshes missing opponent
+    data from ESPN API.
 
     Process:
     1. Fetch current week injuries from MySportsFeeds
     2. Fetch weekly games (Vegas ITT data)
     3. Fetch team defensive statistics
     4. Fetch player game logs for trend analysis
-    5. Store results in database
+    5. Refresh missing opponents from ESPN API
+    6. Store results in database
 
     Returns:
         Dictionary with refresh status:
@@ -75,6 +77,11 @@ async def refresh_mysportsfeeds(db: Session = Depends(_get_current_db_dependency
             'gamelogs': {
                 'fetched': int,
                 'stored': int,
+                'errors': int,
+            },
+            'espn_opponents': {
+                'checked': int,
+                'updated': int,
                 'errors': int,
             },
             'errors': [str, ...],

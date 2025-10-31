@@ -39,6 +39,7 @@ from backend.schemas.smart_score_schemas import (
     PlayerScoreResponse,
 )
 from backend.services.historical_insights_service import HistoricalInsightsService
+from backend.services.espn_service import ESPNService
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,7 @@ class SmartScoreService:
         self._calculation_cache: Dict[str, Tuple[List[PlayerScoreResponse], datetime]] = {}
         self._cache_ttl = timedelta(minutes=5)  # 5 minute TTL
         self._insights_service = HistoricalInsightsService(session)
+        self._espn_service = ESPNService(session)
 
     def is_player_available(self, injury_status: Optional[str]) -> bool:
         """
@@ -918,9 +920,12 @@ class SmartScoreService:
             # Calculate historical insights
             consistency_score = None
             opponent_matchup_avg = None
+            opponent_for_display = None
             salary_efficiency_trend = None
             usage_warnings = None
             stack_partners = None
+            implied_team_total = None
+            over_under = None
 
             if season:
                 # Consistency score
@@ -964,10 +969,42 @@ class SmartScoreService:
                         if not stack_partners:
                             stack_partners = None
 
-                # Opponent matchup history - lookup opponent from vegas_lines
+                # Opponent matchup history - lookup opponent from ESPN API first (more reliable), fallback to vegas_lines
                 opponent = None
+                implied_team_total = None
+                over_under = None
                 try:
-                    # Get opponent from vegas_lines table (same query we use for ITT)
+                    # PRIMARY SOURCE: Get opponent from ESPN API (more reliable)
+                    if season and current_week_num:
+                        try:
+                            import asyncio
+                            # Try to get opponent from ESPN API first
+                            try:
+                                loop = asyncio.get_event_loop()
+                                if loop.is_running():
+                                    # If loop is running, we can't use async here, skip to fallback
+                                    logger.debug("Cannot use ESPN API in async context, using vegas_lines fallback")
+                                else:
+                                    opponent = loop.run_until_complete(
+                                        self._espn_service.get_opponent_for_team(
+                                            player_data.team, season, current_week_num
+                                        )
+                                    )
+                                    if opponent:
+                                        logger.debug(f"Found opponent {opponent} for {player_data.team} via ESPN API (primary source)")
+                            except RuntimeError:
+                                # No event loop, create one
+                                opponent = asyncio.run(
+                                    self._espn_service.get_opponent_for_team(
+                                        player_data.team, season, current_week_num
+                                    )
+                                )
+                                if opponent:
+                                    logger.debug(f"Found opponent {opponent} for {player_data.team} via ESPN API (primary source)")
+                        except Exception as e:
+                            logger.debug(f"Could not fetch opponent from ESPN (primary source): {e}")
+                    
+                    # Get ITT and O/U from vegas_lines (always needed, regardless of opponent source)
                     vegas_result = self.session.execute(
                         text("""
                             SELECT opponent, implied_team_total, over_under
@@ -979,23 +1016,35 @@ class SmartScoreService:
                     ).fetchone()
 
                     if vegas_result:
-                        opponent, implied_team_total, over_under = vegas_result
+                        vegas_opponent, implied_team_total, over_under = vegas_result
                         
-                        # If we have opponent data, calculate historical matchup average
-                        if opponent:
-                            matchup_history = self._insights_service.get_opponent_matchup_history(
-                                player_data.player_key,
-                                opponent,
-                                season
-                            )
-                            opponent_matchup_avg = matchup_history.get("avg_points")
+                        # FALLBACK: Use opponent from vegas_lines only if ESPN didn't provide one
+                        if (not opponent or not isinstance(opponent, str) or not opponent.strip()):
+                            if vegas_opponent and isinstance(vegas_opponent, str) and vegas_opponent.strip():
+                                opponent = vegas_opponent
+                                logger.debug(f"Found opponent {opponent} for {player_data.team} via vegas_lines (fallback)")
+                    
+                    # If we have opponent data, calculate historical matchup average
+                    # Normalize opponent to uppercase and check it's not empty
+                    opponent_for_display = None
+                    if opponent and isinstance(opponent, str) and opponent.strip():
+                        opponent = opponent.strip().upper()
+                        opponent_for_display = opponent  # Store for display
+                        matchup_history = self._insights_service.get_opponent_matchup_history(
+                            player_data.player_key,
+                            opponent,
+                            season
+                        )
+                        opponent_matchup_avg = matchup_history.get("avg_points")
+                        if opponent_matchup_avg is None:
+                            logger.debug(f"No matchup history found for {player_data.name} vs {opponent}")
                     else:
-                        implied_team_total = None
-                        over_under = None
+                        logger.debug(f"No opponent data available for {player_data.name} ({player_data.team}) in week {week_id}")
                 except Exception as e:
                     logger.debug(f"Could not fetch Vegas/opponent data for {player_data.name}: {e}")
                     implied_team_total = None
                     over_under = None
+                    opponent_for_display = None
 
             # Create response
             player_response = PlayerScoreResponse(
@@ -1016,6 +1065,7 @@ class SmartScoreService:
                 implied_team_total=implied_team_total,
                 over_under=over_under,
                 consistency_score=consistency_score,
+                opponent=opponent_for_display,
                 opponent_matchup_avg=opponent_matchup_avg,
                 salary_efficiency_trend=salary_efficiency_trend,
                 usage_warnings=usage_warnings,
