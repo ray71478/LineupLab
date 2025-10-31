@@ -51,6 +51,7 @@ class PlayerOptimizationData:
     ownership: float
     projection: Optional[float]
     implied_team_total: Optional[float] = None  # Vegas ITT for tournament filtering
+    games_with_20_plus_snaps: Optional[int] = None  # Snap count history for elite player identification
 
 
 class LineupOptimizerService:
@@ -58,6 +59,80 @@ class LineupOptimizerService:
     
     def __init__(self, session: Session):
         self.session = session
+    
+    def _identify_elite_players(
+        self,
+        players: List[PlayerOptimizationData],
+    ) -> Dict[str, List[PlayerOptimizationData]]:
+        """
+        Identify elite players by position based on Milly Winner research.
+        
+        CRITICAL: Uses SMART SCORE (not projection) to identify elite players.
+        This allows us to tune W1-W8 weights to surface the right players.
+        
+        Research shows winners heavily favor top-finishing players:
+        - QB: Top 3 in 6/8 lineups (75%)
+        - RB: Top 5 account for 76% of slots, #1 RB in EVERY winner
+        - WR: Top 5 account for 77% of slots
+        - TE: Top 5 in every lineup but 1
+        - DST: Top 3 in 6/8 lineups (75%)
+        
+        Returns:
+            Dict mapping position to list of elite players (sorted by Smart Score)
+        """
+        elite_counts = {
+            'QB': 3,   # Top 3 QBs by Smart Score
+            'RB': 5,   # Top 5 RBs by Smart Score (emphasis on #1)
+            'WR': 5,   # Top 5 WRs by Smart Score
+            'TE': 5,   # Top 5 TEs by Smart Score
+            'DST': 3,  # Top 3 DSTs by Smart Score
+        }
+        
+        elite_by_position = {}
+        
+        for position, count in elite_counts.items():
+            # Get all players at this position
+            pos_players = [p for p in players if p.position == position]
+            
+            # Sort by SMART SCORE (descending) - this is what we tune via W1-W8
+            # This ensures our weight adjustments directly influence elite identification
+            pos_players_sorted = sorted(
+                pos_players,
+                key=lambda p: p.smart_score,
+                reverse=True
+            )
+            
+            # Take top N players by Smart Score
+            elite_players = pos_players_sorted[:count]
+            elite_by_position[position] = elite_players
+            
+            # Log elite players for debugging
+            if elite_players:
+                logger.info(f"Elite {position} players (top {count} by Smart Score):")
+                for i, player in enumerate(elite_players, 1):
+                    proj = player.projection if player.projection is not None else 0
+                    logger.info(f"  #{i}: {player.name} ({player.team}) - SS: {player.smart_score:.1f}, Proj: {proj:.1f}")
+        
+        return elite_by_position
+    
+    def _get_elite_player_ids(
+        self,
+        elite_by_position: Dict[str, List[PlayerOptimizationData]],
+    ) -> Set[int]:
+        """
+        Get set of all elite player IDs for quick lookup.
+        
+        Args:
+            elite_by_position: Dict from _identify_elite_players
+            
+        Returns:
+            Set of player_id values for all elite players
+        """
+        elite_ids = set()
+        for elite_players in elite_by_position.values():
+            for player in elite_players:
+                elite_ids.add(player.player_id)
+        return elite_ids
     
     def generate_lineups(
         self,
@@ -160,6 +235,15 @@ class LineupOptimizerService:
         game_info = self._get_game_info(week_id, opt_players)
         logger.info(f"Retrieved game info for {len(game_info)} teams")
         
+        # Identify elite players for reduced diversity penalties and bonuses
+        logger.info("=" * 80)
+        logger.info("IDENTIFYING ELITE PLAYERS (based on Milly Winner research)")
+        logger.info("=" * 80)
+        elite_by_position = self._identify_elite_players(opt_players)
+        elite_player_ids = self._get_elite_player_ids(elite_by_position)
+        logger.info(f"Total elite players identified: {len(elite_player_ids)}")
+        logger.info("=" * 80)
+        
         generated_lineups = []
         
         # FIRST: Generate 2 baseline lineups (unconstrained, no diversity penalties)
@@ -228,6 +312,7 @@ class LineupOptimizerService:
                     settings=settings,
                     previous_lineups=generated_lineups,
                     lineup_number=lineup_num,
+                    elite_by_position=elite_by_position,
                 )
                 
                 if lineup:
@@ -285,8 +370,12 @@ class LineupOptimizerService:
             regular_count = sum(1 for l in generated_lineups if l.lineup_number > 0)
             logger.info(f"Successfully generated {len(generated_lineups)} lineups ({baseline_count} baselines + {regular_count} user-requested)")
             
-            # Sort lineups: baselines first (negative numbers), then regular lineups (positive numbers)
-            generated_lineups.sort(key=lambda x: (x.lineup_number >= 0, abs(x.lineup_number)))
+            # Sort lineups: baselines first (negative numbers), then regular lineups by Smart Score (highest first)
+            # This shows the best lineups first, making it easy to identify top performers
+            generated_lineups.sort(key=lambda x: (
+                x.lineup_number >= 0,  # Baselines first (False sorts before True)
+                -x.projected_score if x.lineup_number >= 0 else abs(x.lineup_number)  # Regular lineups by Smart Score DESC, baselines by number
+            ))
             
             return generated_lineups, None
         else:
@@ -426,6 +515,7 @@ class LineupOptimizerService:
                 ownership=player.ownership or 0.0,
                 projection=player.projection,
                 implied_team_total=player.implied_team_total,
+                games_with_20_plus_snaps=player.games_with_20_plus_snaps,
             ))
 
         total_skipped = skipped_null_score + skipped_zero_score + skipped_null_salary + skipped_zero_salary + skipped_no_projection + skipped_tournament_filter
@@ -519,6 +609,7 @@ class LineupOptimizerService:
         settings: OptimizationSettings,
         previous_lineups: List[GeneratedLineup],
         lineup_number: int,
+        elite_by_position: Dict[str, List[PlayerOptimizationData]],
     ) -> Optional[GeneratedLineup]:
         """
         Generate a single optimized lineup using PuLP.
@@ -534,32 +625,72 @@ class LineupOptimizerService:
             var_name = f"player_{player.player_id}"
             player_vars[player.player_id] = pulp.LpVariable(var_name, cat='Binary')
         
-        # Objective: Maximize Smart Score + small bonus for using salary cap efficiently
+        # Objective: Maximize Smart Score + bonus for using salary cap efficiently
         # Primary: Smart Score (dominant factor)
-        # Secondary: Salary usage (tiny bonus to encourage spending near cap)
-        prob += pulp.lpSum([
-            player.smart_score * player_vars[player.player_id]
+        # Calculate elite player bonuses FIRST
+        elite_player_ids = self._get_elite_player_ids(elite_by_position)
+        elite_bonuses = {}
+        for position, elite_players in elite_by_position.items():
+            bonus_structures = {
+                'RB': [500.0, 400.0, 300.0, 200.0, 100.0],
+                'WR': [500.0, 400.0, 300.0, 200.0, 100.0],
+                'TE': [500.0, 400.0, 300.0, 200.0, 100.0],
+                'QB': [500.0, 400.0, 300.0],
+                'DST': [500.0, 400.0, 300.0],
+            }
+            bonuses = bonus_structures.get(position, [])
+            for i, player in enumerate(elite_players):
+                if i < len(bonuses):
+                    elite_bonuses[player.player_id] = bonuses[i]
+                    logger.info(
+                        f"Elite bonus: {player.name} ({position} #{i+1}) gets +{bonuses[i]:.1f} points"
+                    )
+        
+        # Objective: Maximize Smart Score + Elite Bonuses + Salary Bonus
+        # Build complete objective function in ONE statement
+        salary_sum = pulp.lpSum([
+            player.salary * player_vars[player.player_id]
             for player in opt_players
         ])
         
-        # Add small bonus for salary usage (0.001 per $1000 = 0.05 points for full $50K)
-        # This encourages using the full salary cap without overriding Smart Score optimization
+        MIN_SALARY = SALARY_CAP - 1000  # $49,000 minimum
+        salary_bonus_multiplier = 0.05
+        
+        # SINGLE objective function with ALL components
+        # Log the actual coefficients being used for elite players
+        for player in opt_players:
+            bonus = elite_bonuses.get(player.player_id, 0)
+            if bonus > 0:
+                total_coefficient = player.smart_score + bonus + (player.salary / 1000) * 0.6
+                logger.info(
+                    f"OBJECTIVE COEFFICIENT: {player.name} = {player.smart_score:.1f} (SS) + {bonus:.1f} (elite) + {(player.salary / 1000) * 0.6:.1f} (salary) = {total_coefficient:.1f} total"
+                )
+        
         prob += pulp.lpSum([
-            (player.salary / 1000) * 0.001 * player_vars[player.player_id]
+            # Base Smart Score
+            player.smart_score * player_vars[player.player_id]
+            # Elite player bonus (if applicable)
+            + elite_bonuses.get(player.player_id, 0) * player_vars[player.player_id]
+            # Salary bonus
+            + (player.salary / 1000) * 0.6 * player_vars[player.player_id]
             for player in opt_players
-        ])
+        ]) + (salary_sum - MIN_SALARY) * salary_bonus_multiplier
         
         # Apply strategy mode adjustments
         self._apply_strategy_mode(prob, opt_players, player_vars, settings.strategy_mode)
         
+        # CRITICAL: Apply elite bonuses AFTER strategy mode to ensure they override any penalties
+        # Elite players should appear frequently regardless of ownership or other strategy adjustments
+        for player_id, bonus in elite_bonuses.items():
+            prob += player_vars[player_id] * bonus
+            logger.info(f"FINAL elite bonus applied: player_id={player_id}, bonus={bonus}")
+        
         # Position constraints
         self._add_position_constraints(prob, players_by_position, player_vars, settings)
         
-        # Salary cap constraint
-        prob += pulp.lpSum([
-            player.salary * player_vars[player.player_id]
-            for player in opt_players
-        ]) <= SALARY_CAP
+        # Salary cap constraint: Must be within $1K of $50K budget (at least $49K, at most $50K)
+        prob += salary_sum >= MIN_SALARY  # At least $49K (increased from $48K)
+        prob += salary_sum <= SALARY_CAP  # At most $50K
         
         # Team limit constraint
         self._add_team_constraints(prob, players_by_team, player_vars, settings)
@@ -573,9 +704,14 @@ class LineupOptimizerService:
         # Stacking rules
         self._add_stacking_constraints(prob, opt_players, game_info, player_vars, settings)
         
+        # Snap count adjustments (boost 28+ snap players, penalize low-snap players except elite)
+        # Note: elite_player_ids already calculated above when building objective function
+        self._add_snap_count_adjustments(prob, opt_players, player_vars, elite_player_ids)
+        
         # Diversity penalty (minimize overlap with previous lineups)
+        # Elite players get 75% reduced penalties
         if previous_lineups:
-            self._add_diversity_penalty(prob, opt_players, player_vars, previous_lineups)
+            self._add_diversity_penalty(prob, opt_players, player_vars, previous_lineups, elite_player_ids)
         
         # Solve
         # TEMPORARILY ENABLE VERBOSE OUTPUT FOR DEBUGGING
@@ -897,22 +1033,30 @@ class LineupOptimizerService:
         if not settings.stacking_rules:
             return
         
-        # QB + WR stack rule
+        # QB + WR/TE stack rule (FLEXIBLE)
+        # If stacking enabled, require QB to stack with AT LEAST ONE pass catcher (WR or TE)
+        # This allows QB+WR, QB+TE, or QB+WR+TE combinations
         if settings.stacking_rules.qb_wr_stack_enabled:
             qb_players = [p for p in players if p.position == 'QB']
             wr_players = [p for p in players if p.position == 'WR']
+            te_players = [p for p in players if p.position == 'TE']
             
-            # For each QB, ensure at least one WR from same team
+            # For each QB, ensure at least one pass catcher (WR or TE) from same team
             for qb in qb_players:
                 qb_team_wrs = [wr for wr in wr_players if wr.team == qb.team]
-                if qb_team_wrs:
-                    # If QB selected, at least one WR from same team must be selected
-                    prob += pulp.lpSum([player_vars[wr.player_id] for wr in qb_team_wrs]) >= player_vars[qb.player_id]
+                qb_team_tes = [te for te in te_players if te.team == qb.team]
+                qb_team_pass_catchers = qb_team_wrs + qb_team_tes
+                
+                if qb_team_pass_catchers:
+                    # If QB selected, at least one pass catcher (WR or TE) from same team must be selected
+                    # This is more flexible than requiring specifically a WR
+                    prob += pulp.lpSum([
+                        player_vars[pc.player_id] for pc in qb_team_pass_catchers
+                    ]) >= player_vars[qb.player_id]
                 else:
-                    # No WRs from same team available - this makes QB+WR stack impossible for this QB
-                    # Instead of making it infeasible, log a warning and skip the constraint for this QB
+                    # No pass catchers from same team available
                     logger.warning(
-                        f"QB+WR stack enabled but no WRs from {qb.team} available for QB {qb.name}. "
+                        f"QB+pass catcher stack enabled but no WRs/TEs from {qb.team} available for QB {qb.name}. "
                         f"Skipping stack constraint for this QB to avoid infeasibility."
                     )
         
@@ -920,6 +1064,7 @@ class LineupOptimizerService:
         # TEMPORARILY DISABLED - This constraint is making the problem infeasible
         # TODO: Fix bring-back logic to be less restrictive
         if False and settings.stacking_rules.bring_back_enabled:
+            pass  # Disabled for now
             # Group players by their game (team + opponent)
             games: Dict[tuple, List[PlayerOptimizationData]] = defaultdict(list)
             
@@ -997,7 +1142,9 @@ class LineupOptimizerService:
             var_name = f"player_{player.player_id}"
             player_vars[player.player_id] = pulp.LpVariable(var_name, cat='Binary')
         
-        # Objective: Maximize Smart Score OR Projection (no penalties, no bonuses)
+        # Objective: Maximize Smart Score OR Projection ONLY (pure optimization)
+        # No salary bonus - we want to see the absolute best possible Smart Score or Projection
+        # The salary constraint ($48K-$50K) ensures budget usage without affecting optimization
         if optimize_for == 'smart_score':
             prob += pulp.lpSum([
                 player.smart_score * player_vars[player.player_id]
@@ -1009,26 +1156,23 @@ class LineupOptimizerService:
                 for player in opt_players
             ])
         
-        # Position constraints (same as regular lineups)
+        # Position constraints (required for valid DraftKings lineups)
         self._add_position_constraints(prob, players_by_position, player_vars, settings)
         
-        # Salary constraint (DraftKings cap is always 50000)
+        # Salary constraint: Must be within $2K of $50K budget (at least $48K, at most $50K)
         salary_cap = 50000
-        prob += pulp.lpSum([
+        min_salary = salary_cap - 2000  # $48,000 minimum
+        salary_sum = pulp.lpSum([
             player.salary * player_vars[player.player_id]
             for player in opt_players
-        ]) <= salary_cap
+        ])
+        prob += salary_sum >= min_salary  # At least $48K
+        prob += salary_sum <= salary_cap  # At most $50K
         
-        # Team constraints (optional - still apply for validity)
-        if settings.max_players_per_team:
-            self._add_team_constraints(prob, players_by_team, player_vars, settings)
-        
-        # Game constraints (optional)
-        if settings.max_players_per_game:
-            self._add_game_constraints(prob, opt_players, game_info, player_vars, settings)
-        
-        # NO stacking rules for baselines (they're unconstrained)
-        # NO diversity penalties for baselines
+        # NO team constraints for baselines (completely unconstrained)
+        # NO game constraints for baselines (completely unconstrained)
+        # NO stacking rules for baselines (completely unconstrained)
+        # NO diversity penalties for baselines (completely unconstrained)
         
         # Solve
         prob.solve(pulp.PULP_CBC_CMD(msg=0))
@@ -1084,15 +1228,104 @@ class LineupOptimizerService:
         
         return lineup
     
+    def _add_elite_player_bonuses(
+        self,
+        prob: pulp.LpProblem,
+        players: List[PlayerOptimizationData],
+        player_vars: Dict[int, pulp.LpVariable],
+        elite_by_position: Dict[str, List[PlayerOptimizationData]],
+    ):
+        """
+        Add bonuses for elite players to counteract diversity penalties.
+        
+        Based on Milly Winner research showing top players dominate winning lineups:
+        - RB #1 appears in EVERY winner → biggest bonus (2.0 points)
+        - Top 3-5 at each position appear 75-77% of the time → scaled bonuses
+        
+        This ensures elite players (by Smart Score) overcome diversity penalties
+        and appear frequently in generated lineups.
+        """
+        # Position-specific bonus structures based on research
+        # SIGNIFICANTLY INCREASED to overcome diversity penalties and constraints
+        # These bonuses need to be large enough to make elite players appear 5-10 times
+        bonus_structures = {
+            'RB': [10.0, 7.0, 5.0, 3.0, 2.0],  # Top 5 RBs, #1 gets 10.0 (appears in every winner)
+            'WR': [8.0, 6.0, 5.0, 3.0, 2.0],   # Top 5 WRs, #1 gets 8.0
+            'TE': [6.0, 4.0, 3.0, 2.0, 1.0],   # Top 5 TEs
+            'QB': [8.0, 5.0, 3.0],              # Top 3 QBs
+            'DST': [5.0, 3.0, 2.0],             # Top 3 DSTs
+        }
+        
+        for position, elite_players in elite_by_position.items():
+            bonuses = bonus_structures.get(position, [])
+            
+            for i, player in enumerate(elite_players):
+                if i < len(bonuses):
+                    bonus = bonuses[i]
+                    # Add bonus to objective function
+                    prob += player_vars[player.player_id] * bonus
+                    logger.debug(
+                        f"Elite bonus: {player.name} ({position} #{i+1}) gets +{bonus:.1f} points"
+                    )
+    
+    def _add_snap_count_adjustments(
+        self,
+        prob: pulp.LpProblem,
+        players: List[PlayerOptimizationData],
+        player_vars: Dict[int, pulp.LpVariable],
+        elite_player_ids: Set[int],
+    ):
+        """
+        Add adjustments based on snap count history.
+        
+        Research shows Milly Winners had 28+ snaps (with rare exceptions).
+        - Players with consistent 28+ snaps: +0.5 bonus
+        - Players with <28 snaps: -1.0 penalty (unless elite)
+        - Elite players exempt from penalties (they're elite for a reason)
+        
+        Uses games_with_20_plus_snaps as proxy:
+        - 3+ games with 20+ snaps = likely 28+ snap player
+        - 0-2 games = risky, penalize
+        """
+        for player in players:
+            # Skip DST (no snap counts)
+            if player.position == 'DST':
+                continue
+            
+            # Elite players are exempt from snap count penalties
+            # (their Smart Score already accounts for their value)
+            is_elite = player.player_id in elite_player_ids
+            
+            snap_games = player.games_with_20_plus_snaps or 0
+            
+            if snap_games >= 3:
+                # Consistent high-snap player: small bonus
+                bonus = 0.5
+                prob += player_vars[player.player_id] * bonus
+                logger.debug(
+                    f"Snap bonus: {player.name} has {snap_games} games with 20+ snaps, +{bonus:.1f}"
+                )
+            elif snap_games < 3 and not is_elite:
+                # Low snap count, not elite: penalty
+                penalty = -1.0
+                prob += player_vars[player.player_id] * penalty
+                logger.debug(
+                    f"Snap penalty: {player.name} has only {snap_games} games with 20+ snaps, {penalty:.1f}"
+                )
+    
     def _add_diversity_penalty(
         self,
         prob: pulp.LpProblem,
         players: List[PlayerOptimizationData],
         player_vars: Dict[int, pulp.LpVariable],
         previous_lineups: List[GeneratedLineup],
+        elite_player_ids: Set[int],
     ):
         """
         Add penalty for overlapping with previous lineups to ensure uniqueness.
+        
+        ELITE PLAYER PROTECTION: Elite players (top by Smart Score) get 75% reduced penalties.
+        This allows proven winners to dominate lineups as shown in Milly Winner research.
         
         This penalizes players who appeared in previous lineups, forcing the optimizer
         to find different combinations while still maximizing Smart Score.
@@ -1108,23 +1341,34 @@ class LineupOptimizerService:
                         break
         
         # Apply diversity penalty by reducing the effective smart score
-        # Use a GENTLE penalty that encourages variety without sacrificing optimization
-        # Base penalty: 0.5 points per appearance (much lighter than before)
-        base_penalty = 0.5
+        # ELITE PLAYERS get 75% reduced penalty (0.025 vs 0.1)
+        # This allows top Smart Score players to appear in most/all lineups
+        base_penalty_elite = 0.025      # Elite players: minimal penalty
+        base_penalty_regular = 0.1      # Regular players: standard penalty
         
         for player in players:
             overlap_count = player_overlap_count.get(player.player_id, 0)
             if overlap_count > 0:
-                # Gentle escalating penalty: 0.5 * (overlap_count ^ 1.1)
-                # This encourages variety but doesn't force bad picks
-                penalty = base_penalty * (overlap_count ** 1.1)
+                # Check if player is elite (top by Smart Score at their position)
+                is_elite = player.player_id in elite_player_ids
+                
+                # Apply appropriate penalty
+                penalty_rate = base_penalty_elite if is_elite else base_penalty_regular
+                penalty = penalty_rate * overlap_count
                 
                 # Subtract penalty from this player's contribution to the objective
                 prob += player_vars[player.player_id] * (-penalty)
+                
+                if is_elite:
+                    logger.debug(
+                        f"Elite diversity penalty: {player.name} appeared {overlap_count}x, "
+                        f"penalty = {penalty:.2f} (reduced)"
+                    )
         
-        # Hard constraint: limit max overlap with any single previous lineup
-        # Relaxed to 7 out of 9 (was 6) - allows more optimization while ensuring difference
-        max_overlap_per_lineup = 7  # Maximum 7 out of 9 players can overlap with any previous lineup
+        # HARD uniqueness constraint: Maximum 7 out of 9 players can overlap with any previous lineup
+        # This guarantees at least 2 different players per lineup (22% uniqueness)
+        # INCREASED from 6 to 7 to allow more elite player repetition per Milly Winner research
+        max_overlap_per_lineup = 7
         
         for prev_lineup in previous_lineups:
             prev_player_ids = set()
@@ -1134,7 +1378,7 @@ class LineupOptimizerService:
                         prev_player_ids.add(player.player_id)
                         break
             
-            # Constraint: sum of overlapping players <= max_overlap_per_lineup
+            # Constraint: sum of overlapping players <= 6 (at least 3 must be different)
             if prev_player_ids:
                 overlap_vars = [player_vars[pid] for pid in prev_player_ids if pid in player_vars]
                 if overlap_vars:

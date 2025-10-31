@@ -201,10 +201,13 @@ export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
       {/* Mobile Card Layout */}
       {isMobile ? (
         <Grid container spacing={2}>
-          {processedLineups.map((lineup) => {
+          {processedLineups.map((lineup, displayIndex) => {
             const isSelected = selectedLineups.has(lineup.lineup_number);
             const isBaseline = lineup.lineup_number < 0;
-            const baselineLabel = lineup.lineup_number === -1 ? '⭐ Best Score' : lineup.lineup_number === -2 ? '🎯 Best Proj' : `Lineup #${lineup.lineup_number}`;
+            // For baselines, use special labels. For regular lineups, use sequential display numbers (1-10)
+            const regularLineupsBeforeThis = processedLineups.slice(0, displayIndex).filter(l => l.lineup_number >= 0).length;
+            const displayNumber = isBaseline ? lineup.lineup_number : regularLineupsBeforeThis + 1;
+            const baselineLabel = lineup.lineup_number === -1 ? '⭐ Best Score' : lineup.lineup_number === -2 ? '🎯 Best Proj' : `Lineup #${displayNumber}`;
             
             return (
               <Grid item xs={12} key={lineup.lineup_number}>
@@ -326,9 +329,14 @@ export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
                                 <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>
                                   {player.team} · ${(player.salary / 100).toFixed(0)}K
                                 </Typography>
-                                <Typography variant="caption" sx={{ fontSize: '0.65rem', color: '#ff6b35', fontWeight: 600 }}>
-                                  {player.smart_score.toFixed(1)}
-                                </Typography>
+                                <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', justifyContent: 'center' }}>
+                                  <Typography variant="caption" sx={{ fontSize: '0.65rem', color: '#ff6b35', fontWeight: 600 }}>
+                                    {player.smart_score.toFixed(1)}
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ fontSize: '0.65rem', color: '#4caf50', fontWeight: 600 }}>
+                                    {player.projection ? player.projection.toFixed(1) : '-'}
+                                  </Typography>
+                                </Box>
                               </>
                             ) : (
                               <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.65rem' }}>
@@ -479,10 +487,13 @@ export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
               </TableRow>
             </TableHead>
             <TableBody>
-              {processedLineups.map((lineup) => {
+              {processedLineups.map((lineup, displayIndex) => {
                 const isSelected = selectedLineups.has(lineup.lineup_number);
                 const isBaseline = lineup.lineup_number < 0;
-                const baselineLabel = lineup.lineup_number === -1 ? '⭐ Best Score' : lineup.lineup_number === -2 ? '🎯 Best Proj' : lineup.lineup_number.toString();
+                // For baselines, use special labels. For regular lineups, use sequential display numbers (1-10)
+                const regularLineupsBeforeThis = processedLineups.slice(0, displayIndex).filter(l => l.lineup_number >= 0).length;
+                const displayNumber = isBaseline ? lineup.lineup_number : regularLineupsBeforeThis + 1;
+                const baselineLabel = lineup.lineup_number === -1 ? '⭐ Best Score' : lineup.lineup_number === -2 ? '🎯 Best Proj' : displayNumber.toString();
                 
                 return (
                   <TableRow
@@ -561,7 +572,7 @@ export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
                         role="gridcell"
                       >
                         {player ? (
-                          <Tooltip title={`${player.name} - ${player.team} - Score: ${player.smart_score.toFixed(1)}`} arrow>
+                          <Tooltip title={`${player.name} - ${player.team} - Smart Score: ${player.smart_score.toFixed(1)} - Proj: ${player.projection ? player.projection.toFixed(1) : 'N/A'}`} arrow>
                             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
                               <Typography 
                                 variant="caption" 
@@ -588,17 +599,30 @@ export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
                               >
                                 {player.team} · ${(player.salary / 100).toFixed(0)}K
                               </Typography>
-                              <Typography 
-                                variant="caption" 
-                                sx={{ 
-                                  fontSize: '0.6rem', 
-                                  color: '#ff6b35',
-                                  fontWeight: 600,
-                                  lineHeight: 1.2,
-                                }}
-                              >
-                                {player.smart_score.toFixed(1)}
-                              </Typography>
+                              <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', justifyContent: 'center' }}>
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    fontSize: '0.6rem', 
+                                    color: '#ff6b35',
+                                    fontWeight: 600,
+                                    lineHeight: 1.2,
+                                  }}
+                                >
+                                  {player.smart_score.toFixed(1)}
+                                </Typography>
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    fontSize: '0.6rem', 
+                                    color: '#4caf50',
+                                    fontWeight: 600,
+                                    lineHeight: 1.2,
+                                  }}
+                                >
+                                  {player.projection ? player.projection.toFixed(1) : '-'}
+                                </Typography>
+                              </Box>
                             </Box>
                           </Tooltip>
                         ) : (
