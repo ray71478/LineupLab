@@ -22,9 +22,18 @@ depends_on = None
 def upgrade() -> None:
     """Create generated_lineups table."""
     
-    # Create enum type for strategy mode
-    strategy_mode_enum = postgresql.ENUM('Chalk', 'Balanced', 'Contrarian', name='strategy_mode_enum', create_type=True)
-    strategy_mode_enum.create(op.get_bind(), checkfirst=True)
+    # Create enum type for strategy mode (only if it doesn't exist)
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'strategy_mode_enum')"
+    )).scalar()
+    
+    if not result:
+        strategy_mode_enum = postgresql.ENUM('Chalk', 'Balanced', 'Contrarian', name='strategy_mode_enum', create_type=True)
+        strategy_mode_enum.create(conn)
+    
+    # Get the enum type (whether newly created or existing)
+    strategy_mode_enum = postgresql.ENUM('Chalk', 'Balanced', 'Contrarian', name='strategy_mode_enum', create_type=False)
     
     # Create generated_lineups table
     op.create_table(
