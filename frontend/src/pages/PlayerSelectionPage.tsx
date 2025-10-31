@@ -63,21 +63,37 @@ export const PlayerSelectionPage: React.FC = () => {
   useEffect(() => {
     if (!weekId || !currentWeights || !currentConfig) return;
 
+    let cancelled = false;
+
     const loadPlayers = async () => {
       setIsLoading(true);
       setError(null);
       try {
         const calculatedPlayers = await calculateScores(weekId, currentWeights, currentConfig);
-        setPlayers(calculatedPlayers);
+        if (!cancelled) {
+          setPlayers(calculatedPlayers);
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load players');
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load players');
+        }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     };
 
     loadPlayers();
-  }, [weekId, currentWeights, currentConfig, calculateScores]);
+
+    // Cleanup function to prevent state updates if component unmounts
+    return () => {
+      cancelled = true;
+    };
+    // Note: We intentionally exclude calculateScores from dependencies to prevent infinite loops
+    // The function reference changes on every render, but the actual calculation logic doesn't
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekId, JSON.stringify(currentWeights), JSON.stringify(currentConfig)]);
 
   // Filter players by threshold
   const filteredPlayers = useMemo(() => {
