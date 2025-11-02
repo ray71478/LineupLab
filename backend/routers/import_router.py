@@ -263,9 +263,9 @@ async def import_linestar(
             """)
 
             for player in matched_players:
-                db.execute(
-                    insert_stmt,
-                    {
+                try:
+                    # Ensure None values are explicitly None for nullable columns
+                    params = {
                         "week_id": actual_week_id,
                         "player_key": player.get("player_key", ""),
                         "name": player.get("name", ""),
@@ -274,15 +274,27 @@ async def import_linestar(
                         "salary": player.get("salary", 0),
                         "projection": player.get("projection", 0.0),
                         "ownership": player.get("ownership", 0.0),
-                        "ceiling": player.get("ceiling"),
-                        "floor": player.get("floor"),
-                        "notes": player.get("notes"),
+                        "ceiling": player.get("ceiling") if player.get("ceiling") is not None else None,
+                        "floor": player.get("floor") if player.get("floor") is not None else None,
+                        "notes": player.get("notes") if player.get("notes") else None,
                         "source": "LineStar",
-                        "projection_source": player.get("projection_source"),
-                        "opponent_rank_category": player.get("opponent_rank_category"),
+                        "projection_source": player.get("projection_source") if player.get("projection_source") else None,
+                        "opponent_rank_category": player.get("opponent_rank_category") if player.get("opponent_rank_category") else None,
                         "contest_mode": contest_mode,
-                    },
-                )
+                    }
+                    db.execute(insert_stmt, params)
+                except Exception as e:
+                    logger.error(
+                        f"Failed to insert player {player.get('name', 'Unknown')} "
+                        f"(key: {player.get('player_key', 'N/A')}): {str(e)}",
+                        exc_info=True
+                    )
+                    raise DataImportError(
+                        f"Failed to insert player {player.get('name', 'Unknown')}: {str(e)}"
+                    )
+            
+            # Flush to ensure all inserts are processed
+            db.flush()
 
         # Create import history record
         import_id = history_tracker.create_import_record(
@@ -507,9 +519,9 @@ async def import_draftkings(
             """)
 
             for player in matched_players:
-                db.execute(
-                    insert_stmt,
-                    {
+                try:
+                    # Ensure None values are explicitly None for nullable columns
+                    params = {
                         "week_id": actual_week_id,
                         "player_key": player.get("player_key", ""),
                         "name": player.get("name", ""),
@@ -518,19 +530,31 @@ async def import_draftkings(
                         "salary": player.get("salary", 0),
                         "projection": player.get("projection", 0.0),
                         "ownership": player.get("ownership", 0.0),
-                        "ceiling": player.get("ceiling"),
-                        "floor": player.get("floor"),
-                        "notes": player.get("notes"),
+                        "ceiling": player.get("ceiling") if player.get("ceiling") is not None else None,
+                        "floor": player.get("floor") if player.get("floor") is not None else None,
+                        "notes": player.get("notes") if player.get("notes") else None,
                         "source": "DraftKings",
-                        "projection_source": player.get("projection_source"),
-                        "opponent_rank_category": player.get("opponent_rank_category"),
-                        "draftkings_id": player.get("draftkings_id"),
-                        "opponent": player.get("opponent"),
-                        "game_time": player.get("game_time"),
-                        "implied_team_total": player.get("implied_team_total"),
+                        "projection_source": player.get("projection_source") if player.get("projection_source") else None,
+                        "opponent_rank_category": player.get("opponent_rank_category") if player.get("opponent_rank_category") else None,
+                        "draftkings_id": player.get("draftkings_id") if player.get("draftkings_id") is not None else None,
+                        "opponent": player.get("opponent") if player.get("opponent") else None,
+                        "game_time": player.get("game_time") if player.get("game_time") else None,
+                        "implied_team_total": player.get("implied_team_total") if player.get("implied_team_total") is not None else None,
                         "contest_mode": contest_mode,
-                    },
-                )
+                    }
+                    db.execute(insert_stmt, params)
+                except Exception as e:
+                    logger.error(
+                        f"Failed to insert player {player.get('name', 'Unknown')} "
+                        f"(key: {player.get('player_key', 'N/A')}): {str(e)}",
+                        exc_info=True
+                    )
+                    raise DataImportError(
+                        f"Failed to insert player {player.get('name', 'Unknown')}: {str(e)}"
+                    )
+            
+            # Flush to ensure all inserts are processed
+            db.flush()
 
         # Create import history record
         import_id = history_tracker.create_import_record(
