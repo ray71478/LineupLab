@@ -241,15 +241,16 @@ export const SmartScoreTable: React.FC<SmartScoreTableProps> = React.memo(({
         size: 70,
         cell: ({ getValue }) => {
           const ownership = getValue() as number;
-          // Display exactly as stored in spreadsheet (all values are percentages)
-          // 0.60 = 0.60%, 16.9 = 16.9%
+          // Ownership is stored as decimal (0.485 = 48.5%), convert to percentage for display
           if (ownership === null || ownership === undefined) {
             return <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>-</Typography>;
           }
+          // Convert decimal to percentage (multiply by 100)
+          const ownershipPercent = ownership * 100;
           // Format with appropriate decimal places
-          const formatted = ownership % 1 === 0 
-            ? ownership.toFixed(0) 
-            : ownership.toFixed(1);
+          const formatted = ownershipPercent % 1 === 0 
+            ? ownershipPercent.toFixed(0) 
+            : ownershipPercent.toFixed(1);
           return (
             <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
               {formatted}%

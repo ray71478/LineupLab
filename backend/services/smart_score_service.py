@@ -16,8 +16,8 @@ Provides methods for:
 Smart Score Formula:
   Smart Score = (projection × W1) +
                 ((ceiling - floor) × W2) +
-                (-(ownership × W3)) +
-                (((projection × 100000) / salary) × W4) +
+                (-(ownership × (1 + ownership × 2.0) × W3)) +  # Aggressive non-linear penalty for high ownership
+                ((((projection × 1000) / (salary / 100)) / 100) × W4) +  # Normalized value score (3-5 range vs 300-500)
                 (trend_percentage × W5) +
                 (-(regression_penalty × W6)) +  // 0 in MVP
                 (((team_itt / league_avg_itt) × W7)) +
@@ -287,7 +287,18 @@ class SmartScoreService:
         """
         Calculate W3: Ownership Penalty.
 
-        Formula: -(ownership × W3)
+        Formula: -(ownership × (1 + ownership × 2.0) × W3)
+        Uses aggressive non-linear scaling to more severely penalize high ownership players.
+        The multiplier (1 + ownership × 2.0) ensures that:
+        - 48.5% ownership gets 1.97x multiplier (effectively doubles the penalty)
+        - 12% ownership gets 1.24x multiplier (moderate increase)
+        - This ensures extremely high ownership players are penalized much more aggressively
+        
+        Example with W3=0.980:
+        - 48.5% ownership: penalty = -(0.485 × 1.97 × 0.980) = -0.936
+        - 12% ownership: penalty = -(0.12 × 1.24 × 0.980) = -0.146
+        - 48.5% gets 6.4x more penalty than 12%
+        
         Missing ownership: Use league average
 
         Args:
@@ -302,8 +313,15 @@ class SmartScoreService:
         if ownership is None:
             ownership = defaults.get("league_avg_ownership", 0.0)
 
+        # Aggressive non-linear penalty using multiplier that scales with ownership
+        # Formula: -(ownership × (1 + ownership × 2.0) × weight)
+        # For high ownership (48.5%): multiplier = 1 + 0.485 × 2.0 = 1.97
+        # For moderate ownership (12%): multiplier = 1 + 0.12 × 2.0 = 1.24
+        ownership_multiplier = 1.0 + (ownership * 2.0)
+        ownership_scaled = ownership * ownership_multiplier
+        
         # Penalty is negative (subtracted from score)
-        value = -(ownership * weight)
+        value = -(ownership_scaled * weight)
         used_default = player.ownership is None
 
         return FactorResult(value=value, used_default=used_default)
@@ -314,8 +332,17 @@ class SmartScoreService:
         """
         Calculate W4: Value Score.
 
-        Formula: ((projection × 100000) / salary) × W4
-
+        Formula: ((projection × 1000) / (salary / 100)) × W4 / 100
+        Normalized by dividing by 100 to bring scale in line with other factors.
+        
+        Original formula would produce values in 300-500 range, which dominates Smart Score.
+        Normalized formula produces values in 3-5 range, comparable to W1 (projection) and W2 (ceiling).
+        
+        Example:
+        - Projection 19.8, Salary $5,200
+        - Original: (19.8 × 100,000) / 5,200 = 380.77
+        - Normalized: (19.8 × 1,000) / (5,200 / 100) / 100 = 3.81
+        
         Args:
             player: Player data
             weight: W4 weight
@@ -329,8 +356,10 @@ class SmartScoreService:
         if player.salary <= 0:
             return FactorResult(value=0.0, used_default=True)
 
-        # Value score: (projection × 100000) / salary
-        value_score = (player.projection * 100000) / player.salary
+        # Value score normalized: ((projection × 1000) / (salary / 100)) / 100
+        # This brings the scale from 300-500 down to 3-5, comparable to other factors
+        # Divide by 100 to normalize the ×100,000 multiplier from original formula
+        value_score = ((player.projection * 1000) / (player.salary / 100)) / 100
         value = value_score * weight
 
         return FactorResult(value=value, used_default=False)
