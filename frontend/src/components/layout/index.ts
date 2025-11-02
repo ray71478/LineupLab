@@ -13,3 +13,6 @@ export type { YearSelectorProps } from './YearSelector';
 
 export { WeekNavigation } from './WeekNavigation';
 export type { WeekNavigationProps } from './WeekNavigation';
+
+export { ModeSelector } from './ModeSelector';
+export type { ModeSelectorProps } from './ModeSelector';

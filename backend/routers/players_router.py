@@ -48,6 +48,7 @@ async def get_players_by_week(
     week_id: int,
     position: Optional[str] = Query(None, description="Filter by position (QB, RB, WR, TE, DST)"),
     team: Optional[str] = Query(None, description="Filter by team abbreviation"),
+    contest_mode: str = Query("main", description="Contest mode filter ('main' or 'showdown', default='main')"),
     sort_by: Optional[str] = Query(None, description="Column to sort by"),
     sort_dir: Optional[str] = Query("asc", description="Sort direction (asc or desc)"),
     limit: int = Query(200, ge=1, le=200, description="Max results (default 200)"),
@@ -61,6 +62,7 @@ async def get_players_by_week(
         week_id: Week ID to fetch players for
         position: Optional position filter
         team: Optional team filter
+        contest_mode: Contest mode filter ('main' or 'showdown', default='main')
         sort_by: Column to sort by
         sort_dir: Sort direction (asc or desc)
         limit: Max results (1-200)
@@ -75,11 +77,17 @@ async def get_players_by_week(
         }
     """
     try:
+        # Validate contest_mode
+        if contest_mode not in ['main', 'showdown']:
+            logger.warning(f"Invalid contest_mode '{contest_mode}', defaulting to 'main'")
+            contest_mode = 'main'
+
         service = PlayerManagementService(db)
         players, total, unmatched_count = service.get_players_by_week(
             week_id=week_id,
             position=position,
             team=team,
+            contest_mode=contest_mode,
             sort_by=sort_by,
             sort_dir=sort_dir,
             limit=limit,

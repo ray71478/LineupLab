@@ -68,7 +68,8 @@ def db_engine():
                     name VARCHAR(255) NOT NULL,
                     team VARCHAR(10) NOT NULL,
                     position VARCHAR(10) NOT NULL CHECK (position IN ('QB', 'RB', 'WR', 'TE', 'DST', 'K')),
-                    salary INTEGER NOT NULL CHECK (salary BETWEEN 3000 AND 10000),
+                    notes TEXT,
+                    salary INTEGER NOT NULL CHECK (salary BETWEEN 200 AND 15000),
                     projection FLOAT CHECK (projection >= 0),
                     ownership FLOAT CHECK (ownership BETWEEN 0 AND 1),
                     ceiling FLOAT,
@@ -84,9 +85,11 @@ def db_engine():
                     projection_ceiling_original FLOAT,
                     projection_ceiling_calibrated FLOAT,
                     calibration_applied BOOLEAN DEFAULT 0,
+                    contest_mode VARCHAR(20) DEFAULT 'main' NOT NULL CHECK (contest_mode IN ('main', 'showdown')),
+                    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(week_id, player_key)
+                    UNIQUE(week_id, player_key, contest_mode)
                 )
             """))
 
@@ -213,6 +216,9 @@ def db_engine():
                     salary INTEGER,
                     source VARCHAR(50),
                     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'mapped', 'ignored')),
+                    imported_name VARCHAR(255),
+                    suggested_player_key VARCHAR(255),
+                    similarity_score FLOAT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -268,6 +274,25 @@ def db_engine():
                 )
             """))
 
+            # Create generated_lineups table (for lineup optimizer)
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS generated_lineups (
+                    id INTEGER PRIMARY KEY,
+                    week_id INTEGER NOT NULL REFERENCES weeks(id) ON DELETE CASCADE,
+                    lineup_number INTEGER NOT NULL CHECK (lineup_number BETWEEN 1 AND 20),
+                    players TEXT NOT NULL,
+                    total_salary INTEGER NOT NULL CHECK (total_salary BETWEEN 0 AND 50000),
+                    projected_score FLOAT NOT NULL CHECK (projected_score >= 0),
+                    avg_ownership FLOAT CHECK (avg_ownership BETWEEN 0 AND 1 OR avg_ownership IS NULL),
+                    strategy_mode VARCHAR(20) NOT NULL CHECK (strategy_mode IN ('Chalk', 'Balanced', 'Contrarian')),
+                    contest_mode VARCHAR(20) DEFAULT 'main' NOT NULL CHECK (contest_mode IN ('main', 'showdown')),
+                    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    weight_profile_id INTEGER,
+                    optimization_settings TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
             conn.commit()
     except Exception as e:
         print(f"Error creating tables: {e}")
@@ -278,6 +303,7 @@ def db_engine():
     try:
         with engine.begin() as conn:
             tables = [
+                "generated_lineups",
                 "week_status_overrides",
                 "week_metadata",
                 "nfl_schedule",

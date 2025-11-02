@@ -7,6 +7,13 @@
  * - Calculates totals (salary, Smart Score, avg ownership)
  * - Allows selection of lineups to save
  * - Highlights salary cap violations (shouldn't happen)
+ * - Supports both Main Slate (9 positions) and Showdown (6 positions) modes
+ *
+ * Showdown Mode Features:
+ * - Displays 1 CPT + 5 FLEX positions
+ * - Captain row highlighted with special styling
+ * - Captain multiplier (1.5x) displayed for salary and points
+ * - Position summary: "1 CPT + 5 FLEX | $XX,XXX / $50,000"
  *
  * Design: Dark theme with compact table layout
  * Mobile: Card-based layout for better UX on small screens
@@ -45,20 +52,27 @@ export interface LineupDisplayProps {
   isLoading?: boolean;
   onSaveSelected?: (selectedLineups: GeneratedLineup[]) => void;
   isSaving?: boolean;
+  contestMode?: 'main' | 'showdown';
 }
 
 const POSITION_ORDER = ['QB', 'RB', 'RB', 'WR', 'WR', 'WR', 'TE', 'FLEX', 'DST'];
+const SHOWDOWN_SALARY_CAP = 50000;
+const MAIN_SLATE_SALARY_CAP = 50000;
 
 export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
   lineups,
   isLoading = false,
   onSaveSelected,
   isSaving = false,
+  contestMode = 'main',
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const isTablet = useMediaQuery(theme.breakpoints.between('md', 'lg'));
   const [selectedLineups, setSelectedLineups] = useState<Set<number>>(new Set());
+
+  const isShowdown = contestMode === 'showdown';
+  const salaryCap = isShowdown ? SHOWDOWN_SALARY_CAP : MAIN_SLATE_SALARY_CAP;
 
   const handleToggleLineup = useCallback((lineupNumber: number) => {
     setSelectedLineups((prev) => {
@@ -99,45 +113,72 @@ export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
   // Memoize processed lineup data for performance - MUST be called before any early returns
   const processedLineups = useMemo(() => {
     return lineups.map((lineup) => {
-      const sortedPlayers = [...lineup.players].sort((a, b) => {
-        const aIdx = POSITION_ORDER.indexOf(a.position);
-        const bIdx = POSITION_ORDER.indexOf(b.position);
-        return aIdx - bIdx;
-      });
+      if (isShowdown) {
+        // Showdown mode: Display captain first, then 5 FLEX
+        const captainPlayer = lineup.players.find(p => p.is_captain);
+        const flexPlayers = lineup.players.filter(p => !p.is_captain);
 
-      const positionMap: Record<string, GeneratedLineup['players']> = {};
-      sortedPlayers.forEach((player) => {
-        const pos = player.position;
-        if (!positionMap[pos]) {
-          positionMap[pos] = [];
-        }
-        positionMap[pos].push(player);
-      });
+        const displayPlayers: (GeneratedLineup['players'][0] | null)[] = [];
 
-      const displayPlayers: (GeneratedLineup['players'][0] | null)[] = [];
-      POSITION_ORDER.forEach((pos) => {
-        if (pos === 'FLEX') {
-          const flexPlayer = sortedPlayers.find(
-            (p) => (p.position === 'RB' || p.position === 'WR' || p.position === 'TE') &&
-              !displayPlayers.some((dp) => dp && dp.player_key === p.player_key)
-          );
-          displayPlayers.push(flexPlayer || null);
+        // Add captain first
+        if (captainPlayer) {
+          displayPlayers.push(captainPlayer);
         } else {
-          const playersAtPos = positionMap[pos] || [];
-          const player = playersAtPos.find(
-            (p) => !displayPlayers.some((dp) => dp && dp.player_key === p.player_key)
-          );
-          displayPlayers.push(player || null);
+          displayPlayers.push(null);
         }
-      });
 
-      return {
-        ...lineup,
-        displayPlayers,
-        salaryViolation: lineup.total_salary > 50000,
-      };
+        // Add 5 FLEX players
+        for (let i = 0; i < 5; i++) {
+          displayPlayers.push(flexPlayers[i] || null);
+        }
+
+        return {
+          ...lineup,
+          displayPlayers,
+          salaryViolation: lineup.total_salary > salaryCap * 100,
+        };
+      } else {
+        // Main slate mode: Original 9-position logic
+        const sortedPlayers = [...lineup.players].sort((a, b) => {
+          const aIdx = POSITION_ORDER.indexOf(a.position);
+          const bIdx = POSITION_ORDER.indexOf(b.position);
+          return aIdx - bIdx;
+        });
+
+        const positionMap: Record<string, GeneratedLineup['players']> = {};
+        sortedPlayers.forEach((player) => {
+          const pos = player.position;
+          if (!positionMap[pos]) {
+            positionMap[pos] = [];
+          }
+          positionMap[pos].push(player);
+        });
+
+        const displayPlayers: (GeneratedLineup['players'][0] | null)[] = [];
+        POSITION_ORDER.forEach((pos) => {
+          if (pos === 'FLEX') {
+            const flexPlayer = sortedPlayers.find(
+              (p) => (p.position === 'RB' || p.position === 'WR' || p.position === 'TE') &&
+                !displayPlayers.some((dp) => dp && dp.player_key === p.player_key)
+            );
+            displayPlayers.push(flexPlayer || null);
+          } else {
+            const playersAtPos = positionMap[pos] || [];
+            const player = playersAtPos.find(
+              (p) => !displayPlayers.some((dp) => dp && dp.player_key === p.player_key)
+            );
+            displayPlayers.push(player || null);
+          }
+        });
+
+        return {
+          ...lineup,
+          displayPlayers,
+          salaryViolation: lineup.total_salary > salaryCap * 100,
+        };
+      }
     });
-  }, [lineups]);
+  }, [lineups, isShowdown, salaryCap]);
 
   if (isLoading) {
     return (
@@ -156,6 +197,80 @@ export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
       </Paper>
     );
   }
+
+  // Helper function to render position label
+  const getPositionLabel = (player: GeneratedLineup['players'][0] | null, index: number): string => {
+    if (!player) return isShowdown ? (index === 0 ? 'CPT' : 'FLEX') : POSITION_ORDER[index];
+    if (isShowdown) {
+      return player.is_captain ? 'CPT' : 'FLEX';
+    }
+    return POSITION_ORDER[index];
+  };
+
+  // Helper function to render salary with captain multiplier
+  const renderSalary = (player: GeneratedLineup['players'][0]): React.ReactNode => {
+    if (!isShowdown || !player.is_captain) {
+      return `$${(player.salary / 100).toFixed(0)}K`;
+    }
+
+    // Captain: show base → captain (1.5x)
+    const baseSalary = player.salary / 100;
+    const captainSalary = (player.salary * 1.5) / 100;
+
+    return (
+      <Tooltip title={`Captain Multiplier: Base $${baseSalary.toFixed(0)} × 1.5 = $${captainSalary.toFixed(0)}`} arrow>
+        <Box component="span" sx={{ fontSize: 'inherit', color: 'inherit' }}>
+          ${baseSalary.toFixed(0)}K → ${captainSalary.toFixed(0)}K
+        </Box>
+      </Tooltip>
+    );
+  };
+
+  // Helper function to render projection with captain multiplier
+  const renderProjection = (player: GeneratedLineup['players'][0]): React.ReactNode => {
+    if (!player.projection) return '-';
+
+    if (!isShowdown || !player.is_captain) {
+      return player.projection.toFixed(1);
+    }
+
+    // Captain: show base → captain (1.5x)
+    const baseProjection = player.projection;
+    const captainProjection = player.projection * 1.5;
+
+    return (
+      <Tooltip title={`Captain Multiplier: Base ${baseProjection.toFixed(1)} × 1.5 = ${captainProjection.toFixed(1)}`} arrow>
+        <Box component="span" sx={{ fontSize: 'inherit', color: 'inherit' }}>
+          {baseProjection.toFixed(1)} → {captainProjection.toFixed(1)}
+        </Box>
+      </Tooltip>
+    );
+  };
+
+  // Helper function to get captain styling
+  const getCaptainRowStyles = (player: GeneratedLineup['players'][0] | null) => {
+    if (!isShowdown || !player?.is_captain) return {};
+
+    return {
+      backgroundColor: 'rgba(255, 107, 53, 0.15)',
+      borderLeft: '3px solid #ff6b35',
+      borderRight: '3px solid #ff6b35',
+      fontWeight: 600,
+      fontSize: '1.05em',
+    };
+  };
+
+  // Helper function to render position summary for showdown
+  const renderPositionSummary = (lineup: typeof processedLineups[0]): string => {
+    if (isShowdown) {
+      const captainCount = lineup.players.filter(p => p.is_captain).length;
+      const flexCount = lineup.players.filter(p => !p.is_captain).length;
+      const totalSalaryFormatted = (lineup.total_salary / 100).toLocaleString();
+      const capFormatted = (salaryCap).toLocaleString();
+      return `${captainCount} CPT + ${flexCount} FLEX | $${totalSalaryFormatted} / $${capFormatted}`;
+    }
+    return '';
+  };
 
   return (
     <Box role="region" aria-label="Generated lineups">
@@ -208,7 +323,7 @@ export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
             const regularLineupsBeforeThis = processedLineups.slice(0, displayIndex).filter(l => l.lineup_number >= 0).length;
             const displayNumber = isBaseline ? lineup.lineup_number : regularLineupsBeforeThis + 1;
             const baselineLabel = lineup.lineup_number === -1 ? '⭐ Best Score' : lineup.lineup_number === -2 ? '🎯 Best Proj' : `Lineup #${displayNumber}`;
-            
+
             return (
               <Grid item xs={12} key={lineup.lineup_number}>
                 <Card
@@ -250,12 +365,12 @@ export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
                             onClick={(e) => e.stopPropagation()}
                           />
                         )}
-                        <Typography 
-                          variant="h6" 
-                          sx={{ 
-                            fontSize: '1rem', 
-                            fontWeight: 600, 
-                            color: isBaseline ? '#4caf50' : '#ff6b35' 
+                        <Typography
+                          variant="h6"
+                          sx={{
+                            fontSize: '1rem',
+                            fontWeight: 600,
+                            color: isBaseline ? '#4caf50' : '#ff6b35'
                           }}
                         >
                           {baselineLabel}
@@ -294,58 +409,89 @@ export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
                         />
                       </Box>
                     </Box>
+
+                    {/* Showdown position summary */}
+                    {isShowdown && (
+                      <Box sx={{ mb: 1.5 }}>
+                        <Typography variant="caption" sx={{ color: '#ff6b35', fontWeight: 600, fontSize: '0.75rem' }}>
+                          {renderPositionSummary(lineup)}
+                        </Typography>
+                      </Box>
+                    )}
+
                     <Divider sx={{ borderColor: 'rgba(255, 107, 53, 0.2)', mb: 1.5 }} />
                     <Grid container spacing={1}>
-                      {lineup.displayPlayers.map((player, idx) => (
-                        <Grid item xs={6} sm={4} key={idx}>
-                          <Box
-                            sx={{
-                              p: 1,
-                              backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                              borderRadius: 1,
-                              border: '1px solid rgba(255, 107, 53, 0.1)',
-                            }}
-                          >
-                            <Typography variant="caption" sx={{ fontSize: '0.65rem', color: '#ff6b35', fontWeight: 600, display: 'block' }}>
-                              {POSITION_ORDER[idx]}
-                            </Typography>
-                            {player ? (
-                              <>
-                                <Tooltip title={player.name} arrow>
-                                  <Typography
-                                    variant="caption"
-                                    sx={{
-                                      fontSize: '0.7rem',
-                                      fontWeight: 600,
-                                      display: 'block',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      whiteSpace: 'nowrap',
-                                    }}
-                                  >
-                                    {player.name}
-                                  </Typography>
-                                </Tooltip>
-                                <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.secondary' }}>
-                                  {player.team} · ${(player.salary / 100).toFixed(0)}K
+                      {lineup.displayPlayers.map((player, idx) => {
+                        const posLabel = getPositionLabel(player, idx);
+                        const isCaptain = isShowdown && player?.is_captain;
+
+                        return (
+                          <Grid item xs={6} sm={4} key={idx}>
+                            <Box
+                              sx={{
+                                p: 1,
+                                backgroundColor: isCaptain ? 'rgba(255, 107, 53, 0.2)' : 'rgba(255, 255, 255, 0.02)',
+                                borderRadius: 1,
+                                border: isCaptain ? '2px solid #ff6b35' : '1px solid rgba(255, 107, 53, 0.1)',
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
+                                <Typography variant="caption" sx={{ fontSize: '0.65rem', color: '#ff6b35', fontWeight: 600 }}>
+                                  {posLabel}
                                 </Typography>
-                                <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', justifyContent: 'center' }}>
-                                  <Typography variant="caption" sx={{ fontSize: '0.65rem', color: '#ff6b35', fontWeight: 600 }}>
-                                    {player.smart_score.toFixed(1)}
+                                {isCaptain && (
+                                  <Chip
+                                    label="CAPTAIN"
+                                    size="small"
+                                    sx={{
+                                      height: '14px',
+                                      fontSize: '0.55rem',
+                                      fontWeight: 700,
+                                      backgroundColor: '#ff6b35',
+                                      color: '#fff',
+                                      px: 0.5,
+                                    }}
+                                  />
+                                )}
+                              </Box>
+                              {player ? (
+                                <>
+                                  <Tooltip title={player.name} arrow>
+                                    <Typography
+                                      variant="caption"
+                                      sx={{
+                                        fontSize: '0.7rem',
+                                        fontWeight: isCaptain ? 700 : 600,
+                                        display: 'block',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                      }}
+                                    >
+                                      {player.name}
+                                    </Typography>
+                                  </Tooltip>
+                                  <Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.secondary', display: 'block' }}>
+                                    {player.team} · {renderSalary(player)}
                                   </Typography>
-                                  <Typography variant="caption" sx={{ fontSize: '0.65rem', color: '#4caf50', fontWeight: 600 }}>
-                                    {player.projection ? player.projection.toFixed(1) : '-'}
-                                  </Typography>
-                                </Box>
-                              </>
-                            ) : (
-                              <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.65rem' }}>
-                                -
-                              </Typography>
-                            )}
-                          </Box>
-                        </Grid>
-                      ))}
+                                  <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', justifyContent: 'center', mt: 0.5 }}>
+                                    <Typography variant="caption" sx={{ fontSize: '0.65rem', color: '#ff6b35', fontWeight: 600 }}>
+                                      {player.smart_score.toFixed(1)}
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ fontSize: '0.65rem', color: '#4caf50', fontWeight: 600 }}>
+                                      {renderProjection(player)}
+                                    </Typography>
+                                  </Box>
+                                </>
+                              ) : (
+                                <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.65rem' }}>
+                                  -
+                                </Typography>
+                              )}
+                            </Box>
+                          </Grid>
+                        );
+                      })}
                     </Grid>
                     <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'text.secondary' }}>
                       <span>Ownership: {(lineup.avg_ownership * 100).toFixed(1)}%</span>
@@ -401,25 +547,67 @@ export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
                 >
                   #
                 </TableCell>
-                {POSITION_ORDER.map((pos, idx) => (
-                  <TableCell
-                    key={`${pos}-${idx}`}
-                    sx={{
-                      backgroundColor: '#0a0a0a',
-                      color: '#ff6b35',
-                      fontWeight: 600,
-                      fontSize: '0.7rem',
-                      borderBottom: '1px solid rgba(255, 107, 53, 0.2)',
-                      textAlign: 'center',
-                      minWidth: 110,
-                      maxWidth: 110,
-                      padding: '8px 4px',
-                    }}
-                    scope="col"
-                  >
-                    {pos}
-                  </TableCell>
-                ))}
+                {isShowdown ? (
+                  // Showdown header: CPT + 5 FLEX
+                  <>
+                    <TableCell
+                      sx={{
+                        backgroundColor: '#0a0a0a',
+                        color: '#ff6b35',
+                        fontWeight: 700,
+                        fontSize: '0.7rem',
+                        borderBottom: '1px solid rgba(255, 107, 53, 0.2)',
+                        textAlign: 'center',
+                        minWidth: 130,
+                        maxWidth: 130,
+                        padding: '8px 4px',
+                      }}
+                      scope="col"
+                    >
+                      CPT
+                    </TableCell>
+                    {[1, 2, 3, 4, 5].map((num) => (
+                      <TableCell
+                        key={`FLEX-${num}`}
+                        sx={{
+                          backgroundColor: '#0a0a0a',
+                          color: '#ff6b35',
+                          fontWeight: 600,
+                          fontSize: '0.7rem',
+                          borderBottom: '1px solid rgba(255, 107, 53, 0.2)',
+                          textAlign: 'center',
+                          minWidth: 110,
+                          maxWidth: 110,
+                          padding: '8px 4px',
+                        }}
+                        scope="col"
+                      >
+                        FLEX
+                      </TableCell>
+                    ))}
+                  </>
+                ) : (
+                  // Main slate header: QB, RB, RB, WR, WR, WR, TE, FLEX, DST
+                  POSITION_ORDER.map((pos, idx) => (
+                    <TableCell
+                      key={`${pos}-${idx}`}
+                      sx={{
+                        backgroundColor: '#0a0a0a',
+                        color: '#ff6b35',
+                        fontWeight: 600,
+                        fontSize: '0.7rem',
+                        borderBottom: '1px solid rgba(255, 107, 53, 0.2)',
+                        textAlign: 'center',
+                        minWidth: 110,
+                        maxWidth: 110,
+                        padding: '8px 4px',
+                      }}
+                      scope="col"
+                    >
+                      {pos}
+                    </TableCell>
+                  ))
+                )}
                 <TableCell
                   sx={{
                     backgroundColor: '#0a0a0a',
@@ -494,12 +682,12 @@ export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
                 const regularLineupsBeforeThis = processedLineups.slice(0, displayIndex).filter(l => l.lineup_number >= 0).length;
                 const displayNumber = isBaseline ? lineup.lineup_number : regularLineupsBeforeThis + 1;
                 const baselineLabel = lineup.lineup_number === -1 ? '⭐ Best Score' : lineup.lineup_number === -2 ? '🎯 Best Proj' : displayNumber.toString();
-                
+
                 return (
                   <TableRow
                     key={lineup.lineup_number}
                     sx={{
-                      backgroundColor: isBaseline 
+                      backgroundColor: isBaseline
                         ? 'rgba(76, 175, 80, 0.1)' // Green tint for baselines
                         : isSelected ? 'rgba(255, 107, 53, 0.1)' : 'transparent',
                       borderLeft: isBaseline ? '3px solid #4caf50' : 'none',
@@ -543,11 +731,11 @@ export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
                           />
                         )}
                         <Tooltip title={isBaseline ? 'Baseline (unconstrained optimization)' : `Lineup ${lineup.lineup_number}`} arrow>
-                          <Typography 
-                            variant="caption" 
-                            sx={{ 
-                              fontSize: isBaseline ? '0.65rem' : '0.7rem', 
-                              fontWeight: 600, 
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              fontSize: isBaseline ? '0.65rem' : '0.7rem',
+                              fontWeight: 600,
                               lineHeight: 1,
                               color: isBaseline ? '#4caf50' : 'inherit',
                             }}
@@ -558,80 +746,101 @@ export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
                       </Box>
                     </TableCell>
 
-                    {lineup.displayPlayers.map((player, idx) => (
-                      <TableCell
-                        key={idx}
-                        sx={{
-                          fontSize: '0.65rem',
-                          color: 'text.primary',
-                          textAlign: 'center',
-                          borderBottom: '1px solid rgba(255, 107, 53, 0.1)',
-                          padding: '6px 4px',
-                          maxWidth: 110,
-                        }}
-                        role="gridcell"
-                      >
-                        {player ? (
-                          <Tooltip title={`${player.name} - ${player.team} - Smart Score: ${player.smart_score.toFixed(1)} - Proj: ${player.projection ? player.projection.toFixed(1) : 'N/A'}`} arrow>
-                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                              <Typography 
-                                variant="caption" 
-                                sx={{ 
-                                  fontSize: '0.65rem', 
-                                  fontWeight: 600, 
-                                  display: 'block',
-                                  lineHeight: 1.2,
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                  color: 'text.primary',
-                                }}
-                              >
-                                {player.name}
-                              </Typography>
-                              <Typography 
-                                variant="caption" 
-                                sx={{ 
-                                  fontSize: '0.6rem', 
-                                  color: 'text.secondary',
-                                  lineHeight: 1.2,
-                                }}
-                              >
-                                {player.team} · ${(player.salary / 100).toFixed(0)}K
-                              </Typography>
-                              <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', justifyContent: 'center' }}>
-                                <Typography 
-                                  variant="caption" 
-                                  sx={{ 
-                                    fontSize: '0.6rem', 
-                                    color: '#ff6b35',
-                                    fontWeight: 600,
+                    {lineup.displayPlayers.map((player, idx) => {
+                      const isCaptain = isShowdown && player?.is_captain;
+
+                      return (
+                        <TableCell
+                          key={idx}
+                          sx={{
+                            fontSize: '0.65rem',
+                            color: 'text.primary',
+                            textAlign: 'center',
+                            borderBottom: '1px solid rgba(255, 107, 53, 0.1)',
+                            padding: '6px 4px',
+                            maxWidth: isShowdown && idx === 0 ? 130 : 110,
+                            ...getCaptainRowStyles(player),
+                          }}
+                          role="gridcell"
+                        >
+                          {player ? (
+                            <Tooltip title={`${player.name} - ${player.team} - Smart Score: ${player.smart_score.toFixed(1)} - Proj: ${player.projection ? player.projection.toFixed(1) : 'N/A'}${isCaptain ? ' - CAPTAIN (1.5x)' : ''}`} arrow>
+                              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                                  <Typography
+                                    variant="caption"
+                                    sx={{
+                                      fontSize: isCaptain ? '0.7rem' : '0.65rem',
+                                      fontWeight: isCaptain ? 700 : 600,
+                                      display: 'block',
+                                      lineHeight: 1.2,
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap',
+                                      color: 'text.primary',
+                                    }}
+                                  >
+                                    {player.name}
+                                  </Typography>
+                                  {isCaptain && (
+                                    <Chip
+                                      label="CPT"
+                                      size="small"
+                                      sx={{
+                                        height: '12px',
+                                        fontSize: '0.5rem',
+                                        fontWeight: 700,
+                                        backgroundColor: '#ff6b35',
+                                        color: '#fff',
+                                        px: 0.5,
+                                      }}
+                                    />
+                                  )}
+                                </Box>
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    fontSize: '0.6rem',
+                                    color: 'text.secondary',
                                     lineHeight: 1.2,
                                   }}
                                 >
-                                  {player.smart_score.toFixed(1)}
+                                  {player.team} · {renderSalary(player)}
                                 </Typography>
-                                <Typography 
-                                  variant="caption" 
-                                  sx={{ 
-                                    fontSize: '0.6rem', 
-                                    color: '#4caf50',
-                                    fontWeight: 600,
-                                    lineHeight: 1.2,
-                                  }}
-                                >
-                                  {player.projection ? player.projection.toFixed(1) : '-'}
-                                </Typography>
+                                <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', justifyContent: 'center' }}>
+                                  <Typography
+                                    variant="caption"
+                                    sx={{
+                                      fontSize: '0.6rem',
+                                      color: '#ff6b35',
+                                      fontWeight: 600,
+                                      lineHeight: 1.2,
+                                    }}
+                                  >
+                                    {player.smart_score.toFixed(1)}
+                                  </Typography>
+                                  <Typography
+                                    variant="caption"
+                                    sx={{
+                                      fontSize: '0.6rem',
+                                      color: '#4caf50',
+                                      fontWeight: 600,
+                                      lineHeight: 1.2,
+                                    }}
+                                  >
+                                    {renderProjection(player)}
+                                  </Typography>
+                                </Box>
                               </Box>
-                            </Box>
-                          </Tooltip>
-                        ) : (
-                          <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.65rem' }}>
-                            -
-                          </Typography>
-                        )}
-                      </TableCell>
-                    ))}
+                            </Tooltip>
+                          ) : (
+                            <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.65rem' }}>
+                              -
+                            </Typography>
+                          )}
+                        </TableCell>
+                      );
+                    })}
 
                     <TableCell
                       sx={{
@@ -717,4 +926,3 @@ export const LineupDisplay: React.FC<LineupDisplayProps> = React.memo(({
 LineupDisplay.displayName = 'LineupDisplay';
 
 export default LineupDisplay;
-

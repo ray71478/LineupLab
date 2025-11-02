@@ -2,10 +2,11 @@
  * usePlayerManagement Hook
  *
  * Custom hook for centralized player data management with React Query
- * - Fetches player and unmatched player data for a specific week
+ * - Fetches player and unmatched player data for a specific week and mode
  * - Implements caching with 5-minute stale time
  * - Provides cache invalidation on mapping
  * - Manages loading, error, and data states
+ * - Automatically refetches when mode changes
  *
  * @example
  * const {
@@ -20,6 +21,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PlayerResponse, UnmatchedPlayerResponse } from '../types/player.types';
+import { useMode } from './useMode';
 
 export interface UsePlayerManagementReturn {
   players: PlayerResponse[];
@@ -45,10 +47,10 @@ interface UnmatchedPlayersResponse {
 }
 
 /**
- * Fetch players for a specific week
+ * Fetch players for a specific week and contest mode
  */
-async function fetchPlayersByWeek(weekId: number): Promise<PlayerResponse[]> {
-  const response = await fetch(`/api/players/by-week/${weekId}`);
+async function fetchPlayersByWeek(weekId: number, contestMode: string): Promise<PlayerResponse[]> {
+  const response = await fetch(`/api/players/by-week/${weekId}?contest_mode=${contestMode}`);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch players for week ${weekId}`);
@@ -64,12 +66,13 @@ async function fetchPlayersByWeek(weekId: number): Promise<PlayerResponse[]> {
 }
 
 /**
- * Fetch unmatched players for a specific week
+ * Fetch unmatched players for a specific week and contest mode
  */
 async function fetchUnmatchedPlayers(
-  weekId: number
+  weekId: number,
+  contestMode: string
 ): Promise<UnmatchedPlayerResponse[]> {
-  const response = await fetch(`/api/players/unmatched/${weekId}`);
+  const response = await fetch(`/api/players/unmatched/${weekId}?contest_mode=${contestMode}`);
 
   if (!response.ok) {
     throw new Error(`Failed to fetch unmatched players for week ${weekId}`);
@@ -90,13 +93,14 @@ async function fetchUnmatchedPlayers(
  * Manages player data fetching with:
  * - React Query for server state management
  * - 5-minute stale time for caching
- * - Automatic refetching when week changes
+ * - Automatic refetching when week or mode changes
  * - Manual cache invalidation on mapping
  */
 export const usePlayerManagement = (
   weekId: number | null
 ): UsePlayerManagementReturn => {
   const queryClient = useQueryClient();
+  const { mode } = useMode();
 
   // Fetch all players
   const {
@@ -106,8 +110,8 @@ export const usePlayerManagement = (
     error: playersError,
     refetch: refetchPlayers,
   } = useQuery({
-    queryKey: ['players', weekId],
-    queryFn: () => fetchPlayersByWeek(weekId!),
+    queryKey: ['players', weekId, mode],
+    queryFn: () => fetchPlayersByWeek(weekId!, mode),
     enabled: weekId !== null,
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: 3,
@@ -122,8 +126,8 @@ export const usePlayerManagement = (
     error: unmatchedError,
     refetch: refetchUnmatched,
   } = useQuery({
-    queryKey: ['unmatched-players', weekId],
-    queryFn: () => fetchUnmatchedPlayers(weekId!),
+    queryKey: ['unmatched-players', weekId, mode],
+    queryFn: () => fetchUnmatchedPlayers(weekId!, mode),
     enabled: weekId !== null,
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: 3,
@@ -141,8 +145,8 @@ export const usePlayerManagement = (
 
   const invalidateCache = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['players', weekId] }),
-      queryClient.invalidateQueries({ queryKey: ['unmatched-players', weekId] }),
+      queryClient.invalidateQueries({ queryKey: ['players', weekId, mode] }),
+      queryClient.invalidateQueries({ queryKey: ['unmatched-players', weekId, mode] }),
     ]);
   };
 

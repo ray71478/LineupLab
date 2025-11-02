@@ -25,6 +25,7 @@ export interface OptimizationSettings {
   stacking_rules?: StackingRules;
   exclude_bottom_percentile?: number;
   max_ownership?: number;
+  locked_captain_id?: string | null; // Showdown mode: force specific player as captain
 }
 
 export interface LineupPlayer {
@@ -36,6 +37,7 @@ export interface LineupPlayer {
   smart_score: number;
   ownership: number;
   projection?: number;
+  is_captain?: boolean;
 }
 
 export interface GeneratedLineup {
@@ -53,6 +55,8 @@ export interface LineupOptimizationRequest {
   selected_player_ids?: number[];
   weights?: WeightProfile;
   config?: ScoreConfig;
+  contest_mode?: 'main' | 'showdown';
+  locked_captain_id?: string;
 }
 
 export interface LineupOptimizationResponse {
@@ -67,6 +71,7 @@ export interface SaveLineupsRequest {
   lineups: GeneratedLineup[];
   weight_profile_id?: number;
   strategy_mode?: string;
+  contest_mode?: 'main' | 'showdown';
 }
 
 export interface SaveLineupsResponse {
@@ -85,5 +90,5 @@ export interface SavedLineup {
   strategy_mode: string;
   weight_profile_id?: number;
   created_at: string;
+  contest_mode?: 'main' | 'showdown';
 }
-

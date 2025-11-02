@@ -26,6 +26,7 @@ class PlayerResponse(BaseModel):
     source: str = Field(..., description="Import source (LineStar, DraftKings, etc.)")
     status: str = Field(..., description="Match status (matched or unmatched)")
     uploaded_at: datetime = Field(..., description="Upload timestamp")
+    contest_mode: str = Field(default='main', description="Contest mode (main or showdown)")
 
     # Calibrated projection fields for dual-value display
     projection_floor_original: Optional[float] = Field(None, description="Original floor projection")

@@ -4,13 +4,14 @@
  * Custom hook for handling data import operations including:
  * - File upload with week detection
  * - Week mismatch detection
- * - API calls to import endpoints
+ * - API calls to import endpoints with contest mode support
  * - Error and success handling
  * - Unmatched players workflow
  */
 
 import { useState, useCallback } from 'react';
 import { useWeekStore } from '../store/weekStore';
+import { useMode } from './useMode';
 
 export interface ImportResponse {
   success: boolean;
@@ -91,11 +92,12 @@ function getApiEndpoint(importType: 'linestar' | 'draftkings' | 'nfl-stats'): st
  * 1. Parse filename for week number
  * 2. Compare to selected week
  * 3. Detect week mismatch
- * 4. Upload file via FormData
+ * 4. Upload file via FormData with contest mode
  * 5. Handle responses (success, warning, error)
  */
 export const useDataImport = (): UseDataImportReturn => {
   const { currentWeek } = useWeekStore();
+  const { mode } = useMode();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -156,6 +158,8 @@ export const useDataImport = (): UseDataImportReturn => {
           if (detectedWeekNum) {
             formData.append('detected_week', String(detectedWeekNum));
           }
+          // Add contest mode parameter
+          formData.append('contest_mode', mode);
         }
 
         // Make API request
@@ -189,8 +193,9 @@ export const useDataImport = (): UseDataImportReturn => {
           return data;
         }
 
-        // Success
-        const message = data.message || `Import successful`;
+        // Success - include mode in message
+        const modeText = mode === 'showdown' ? ' (Showdown mode)' : ' (Main Slate)';
+        const message = data.message ? `${data.message}${modeText}` : `Import successful${modeText}`;
         setSuccessMessage(message);
         setImportId(data.import_id || null);
         setIsLoading(false);
@@ -203,7 +208,7 @@ export const useDataImport = (): UseDataImportReturn => {
         return null;
       }
     },
-    [currentWeek, clearMessages]
+    [currentWeek, mode, clearMessages]
   );
 
   return {

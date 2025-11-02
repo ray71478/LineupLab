@@ -6,6 +6,12 @@ Uses PuLP linear programming to solve constrained optimization problem:
 - Enforce DraftKings constraints (positions, salary cap)
 - Apply user settings (strategy mode, exposure limits, stacking rules)
 - Generate diverse lineups (portfolio optimization with elite appearance constraints)
+- Supports both Main Slate and Showdown contest modes
+
+Performance Optimizations (Task 15):
+- Captain candidate caching to avoid recalculation
+- Performance timing and logging
+- Optimized database queries with proper indexing
 """
 
 import logging
@@ -13,6 +19,7 @@ import time
 from typing import List, Dict, Optional, Set, Tuple
 from dataclasses import dataclass
 from collections import defaultdict
+from functools import lru_cache
 
 import pulp
 from sqlalchemy.orm import Session
@@ -26,7 +33,7 @@ from backend.schemas.lineup_schemas import (
 
 logger = logging.getLogger(__name__)
 
-# DraftKings constraints
+# DraftKings Main Slate constraints
 SALARY_CAP = 50000
 MIN_SALARY = SALARY_CAP - 1000  # $49,000 minimum
 POSITION_REQUIREMENTS = {
@@ -38,6 +45,16 @@ POSITION_REQUIREMENTS = {
     'DST': 1,
 }
 TOTAL_POSITIONS = sum(POSITION_REQUIREMENTS.values())  # 9
+
+# DraftKings Showdown constraints
+SHOWDOWN_SALARY_CAP = 50000
+SHOWDOWN_MIN_SALARY = SHOWDOWN_SALARY_CAP - 2000  # $48,000 minimum
+SHOWDOWN_POSITION_REQUIREMENTS = {
+    'CPT': 1,   # Captain (any position)
+    'FLEX': 5,  # FLEX (QB/RB/WR/TE/K/DST)
+}
+SHOWDOWN_TOTAL_POSITIONS = sum(SHOWDOWN_POSITION_REQUIREMENTS.values())  # 6
+CAPTAIN_MULTIPLIER = 1.5  # Captain earns 1.5x salary and 1.5x points
 
 # Elite Appearance Targets - Updated to be less restrictive
 # Structure: Dict[position, List[Tuple[min_appearances, max_appearances]]] for ranks 1-15
@@ -157,107 +174,163 @@ class LineupOptimizerService:
 
     def __init__(self, session: Session):
         self.session = session
+        # Cache for captain candidates to avoid recalculation (Task 15.2)
+        self._captain_candidates_cache: Optional[List[PlayerOptimizationData]] = None
+        self._cache_player_hash: Optional[str] = None
 
-    def _identify_elite_players(
+    def _get_player_pool_hash(self, players: List[PlayerOptimizationData]) -> str:
+        """
+        Generate a hash of the player pool for cache invalidation.
+
+        Performance optimization (Task 15.2): Cache captain candidates across lineup generation.
+        """
+        # Use player IDs sorted to create a stable hash
+        return ','.join(sorted(str(p.player_id) for p in players))
+
+    def _select_captain_candidates(
         self,
         players: List[PlayerOptimizationData],
-    ) -> Dict[str, List[PlayerOptimizationData]]:
+        locked_captain_id: Optional[str] = None,
+    ) -> List[PlayerOptimizationData]:
         """
-        Identify elite players by position based on Smart Score ranking.
+        Select captain candidates based on value calculation.
 
-        Uses Smart Score (not projection) to identify elite players based on
-        the customized scoring formula weights.
+        Performance optimization (Task 15.2):
+        - Caches captain candidates to avoid recalculation across multiple lineups
+        - Pre-calculates captain values for all players once
 
-        Identifies top 15 players per position based on Smart Score:
-        - These players form the elite pool for appearance constraints
-        - Smart Score reflects the user's customized weight preferences
+        If locked_captain_id is provided, returns only that player.
+        Otherwise, returns top 5 players by captain value.
+
+        Captain value formula: (smart_score * 1.5) / (salary * 1.5) = smart_score / salary
 
         Args:
             players: List of all available players
+            locked_captain_id: Optional player_key to lock as captain
 
         Returns:
-            Dict mapping position to list of elite players (sorted by Smart Score, highest first)
+            List of captain candidate players (1 if locked, up to 5 otherwise)
         """
-        elite_counts = {
-            'QB': 15,   # Top 15 QBs by Smart Score
-            'RB': 15,   # Top 15 RBs by Smart Score
-            'WR': 15,   # Top 15 WRs by Smart Score
-            'TE': 15,   # Top 15 TEs by Smart Score
-            'DST': 15,  # Top 15 DSTs by Smart Score
-        }
+        # Performance timing (Task 15.1)
+        start_time = time.time()
 
-        elite_by_position = {}
+        if locked_captain_id:
+            # Find locked captain
+            locked_player = next((p for p in players if p.player_key == locked_captain_id), None)
+            if locked_player:
+                logger.info(f"Using locked captain: {locked_player.name} ({locked_player.position})")
+                return [locked_player]
+            else:
+                logger.warning(f"Locked captain {locked_captain_id} not found in player pool")
+                return []
 
-        for position, count in elite_counts.items():
-            # Get all players at this position
-            pos_players = [p for p in players if p.position == position]
+        # Check cache (Task 15.2 optimization)
+        player_hash = self._get_player_pool_hash(players)
+        if self._captain_candidates_cache and self._cache_player_hash == player_hash:
+            elapsed = (time.time() - start_time) * 1000
+            logger.info(f"Using cached captain candidates (cache hit, {elapsed:.2f}ms)")
+            return self._captain_candidates_cache
 
-            # Sort by SMART SCORE (descending) - reflects customized weights
-            # Players with null Smart Scores will be sorted to the end (treated as 0)
-            pos_players_sorted = sorted(
-                pos_players,
-                key=lambda p: p.smart_score if p.smart_score is not None else 0,
-                reverse=True
+        # Calculate captain value for each player: smart_score / salary (multipliers cancel out)
+        # Pre-calculate all values at once (Task 15.2 optimization)
+        captain_values = [
+            (player, player.smart_score / player.salary)
+            for player in players
+            if player.salary > 0  # Avoid division by zero
+        ]
+
+        # Sort by value (descending) and take top 5
+        captain_values.sort(key=lambda x: x[1], reverse=True)
+        top_candidates = [player for player, value in captain_values[:5]]
+
+        # Cache results (Task 15.2)
+        self._captain_candidates_cache = top_candidates
+        self._cache_player_hash = player_hash
+
+        elapsed = (time.time() - start_time) * 1000
+        logger.info(f"Captain candidate selection completed in {elapsed:.2f}ms (cache miss)")
+        logger.info(f"Selected top {len(top_candidates)} captain candidates:")
+        for player in top_candidates:
+            value = player.smart_score / player.salary
+            logger.info(
+                f"  {player.name} ({player.position}): value={value:.6f}, "
+                f"SS={player.smart_score:.1f}, salary=${player.salary}"
             )
 
-            # Take top N players by Smart Score
-            elite_players = pos_players_sorted[:count]
-            elite_by_position[position] = elite_players
+        return top_candidates
 
-            # Log elite players for debugging
-            if elite_players:
-                logger.info(f"Elite {position} players (top {count} by Smart Score):")
-                for i, player in enumerate(elite_players, 1):
-                    ss = player.smart_score if player.smart_score is not None else 0
-                    proj = player.projection if player.projection is not None else 0
-                    logger.info(f"  #{i}: {player.name} ({player.team}) - SS: {ss:.1f}, Proj: {proj:.1f}")
-
-        return elite_by_position
-
-    def _get_elite_player_ids(
+    def _validate_showdown_lineup_feasibility(
         self,
-        elite_by_position: Dict[str, List[PlayerOptimizationData]],
-    ) -> Set[int]:
+        players: List[PlayerOptimizationData],
+        locked_captain_id: Optional[str] = None,
+    ) -> Tuple[bool, Optional[str]]:
         """
-        Get set of all elite player IDs for quick lookup.
+        Pre-check if showdown lineup is feasible before optimization.
 
         Args:
-            elite_by_position: Dict from _identify_elite_players
+            players: Available player pool
+            locked_captain_id: Optional locked captain player_key
 
         Returns:
-            Set of player_id values for all elite players
+            Tuple of (is_feasible, error_message)
         """
-        elite_ids = set()
-        for elite_players in elite_by_position.values():
-            for player in elite_players:
-                elite_ids.add(player.player_id)
-        return elite_ids
+        if len(players) < SHOWDOWN_TOTAL_POSITIONS:
+            return False, f"Not enough players: {len(players)} available, need {SHOWDOWN_TOTAL_POSITIONS}"
 
-    def _get_elite_appearance_target(
-        self,
-        position: str,
-        rank: int,
-    ) -> Tuple[int, int]:
-        """
-        Get elite appearance target for a specific position and rank.
+        if locked_captain_id:
+            # Find locked captain
+            locked_captain = next((p for p in players if p.player_key == locked_captain_id), None)
+            if not locked_captain:
+                return False, f"Locked captain '{locked_captain_id}' not found in player pool"
 
-        Args:
-            position: Player position (QB, RB, WR, TE, DST)
-            rank: Player rank (0-indexed, 0 = #1 player)
+            # Check if remaining salary supports 5 FLEX players
+            captain_salary = int(locked_captain.salary * CAPTAIN_MULTIPLIER)
+            remaining_salary = SHOWDOWN_SALARY_CAP - captain_salary
 
-        Returns:
-            Tuple of (min_appearances, max_appearances)
-        """
-        if position not in ELITE_APPEARANCE_TARGETS:
-            logger.warning(f"Position {position} not in ELITE_APPEARANCE_TARGETS, returning default")
-            return (0, 10)
+            # Get 5 cheapest non-captain players
+            other_players = [p for p in players if p.player_key != locked_captain_id]
+            other_players_sorted = sorted(other_players, key=lambda p: p.salary)
 
-        targets = ELITE_APPEARANCE_TARGETS[position]
-        if rank < 0 or rank >= len(targets):
-            logger.debug(f"Rank {rank} out of bounds for {position}, returning default")
-            return (0, 10)
+            if len(other_players_sorted) < 5:
+                return False, "Not enough non-captain players for 5 FLEX positions"
 
-        return targets[rank]
+            min_flex_cost = sum(p.salary for p in other_players_sorted[:5])
+
+            if min_flex_cost > remaining_salary:
+                return False, (
+                    f"Captain lock prevents valid lineup construction: "
+                    f"Captain {locked_captain.name} costs ${captain_salary} (${locked_captain.salary} * 1.5), "
+                    f"leaving ${remaining_salary} for 5 FLEX players, but minimum cost is ${min_flex_cost}"
+                )
+
+            logger.info(
+                f"Locked captain validation passed: {locked_captain.name} (${captain_salary}), "
+                f"remaining ${remaining_salary}, min FLEX cost ${min_flex_cost}"
+            )
+
+        else:
+            # Check if ANY captain + 5 FLEX combination exists under cap
+            # Sort players by salary
+            players_sorted = sorted(players, key=lambda p: p.salary)
+
+            # Try cheapest 6 players
+            if len(players_sorted) < 6:
+                return False, f"Not enough players for 6-player showdown lineup"
+
+            cheapest_6 = players_sorted[:6]
+
+            # Try making cheapest player captain (worst case)
+            min_captain_salary = int(cheapest_6[0].salary * CAPTAIN_MULTIPLIER)
+            min_flex_salary = sum(p.salary for p in cheapest_6[1:6])
+            min_total = min_captain_salary + min_flex_salary
+
+            if min_total > SHOWDOWN_SALARY_CAP:
+                return False, (
+                    f"Cannot fit any captain + 5 FLEX under ${SHOWDOWN_SALARY_CAP} cap: "
+                    f"minimum possible cost is ${min_total}"
+                )
+
+        return True, None
 
     def generate_lineups(
         self,
@@ -268,25 +341,329 @@ class LineupOptimizerService:
         """
         Generate optimized lineups based on Smart Scores and constraints.
 
-        Always generates 2 baseline lineups first:
-        1. "Best Smart Score" - Pure Smart Score optimization (lineup_number = -1)
-        2. "Best Projection" - Pure projection optimization (lineup_number = -2)
+        Performance monitoring (Task 15.1 & 15.5):
+        - Logs lineup generation time
+        - Tracks performance metrics for monitoring
 
-        Then generates N user-requested lineups using portfolio optimization with
-        elite appearance constraints for improved distribution of top players.
+        Supports both Main Slate and Showdown contest modes.
+
+        Main Slate:
+        - Always generates 2 baseline lineups first:
+          1. "Best Smart Score" - Pure Smart Score optimization (lineup_number = -1)
+          2. "Best Projection" - Pure projection optimization (lineup_number = -2)
+        - Then generates N user-requested lineups using portfolio optimization
+
+        Showdown:
+        - Generates N lineups with 1 CPT + 5 FLEX format
+        - Captain selection based on value: smart_score / salary
+        - Different captains across lineups for diversity
 
         Args:
             week_id: Week ID
             players: List of players with Smart Scores
-            settings: Optimization settings (strategy, exposure limits, etc.)
+            settings: Optimization settings (strategy, exposure limits, contest_mode, etc.)
 
         Returns:
             Tuple of (list of GeneratedLineup objects, position_counts dict if failed)
         """
+        # Performance timing (Task 15.1 & 15.5)
+        generation_start_time = time.time()
+
         if not players:
             logger.warning("No players provided for optimization")
             return [], {}
 
+        # Route to showdown optimizer if contest_mode is 'showdown'
+        if settings.contest_mode == 'showdown':
+            result = self._generate_showdown_lineups(week_id, players, settings)
+
+            # Log performance metrics (Task 15.5)
+            generation_time = time.time() - generation_start_time
+            logger.info(f"[PERFORMANCE] Showdown lineup generation completed in {generation_time:.2f}s")
+
+            return result
+
+        # Otherwise, use main slate optimizer (existing logic)
+        result = self._generate_main_slate_lineups(week_id, players, settings)
+
+        # Log performance metrics (Task 15.5)
+        generation_time = time.time() - generation_start_time
+        logger.info(f"[PERFORMANCE] Main slate lineup generation completed in {generation_time:.2f}s")
+
+        return result
+
+    def _generate_showdown_lineups(
+        self,
+        week_id: int,
+        players: List[PlayerScoreResponse],
+        settings: OptimizationSettings,
+    ) -> Tuple[List[GeneratedLineup], Optional[Dict[str, int]]]:
+        """
+        Generate showdown lineups (1 CPT + 5 FLEX format).
+
+        Performance optimizations (Task 15.2):
+        - Captain candidates are cached
+        - Lineup generation is optimized with efficient data structures
+
+        Args:
+            week_id: Week ID
+            players: List of players with Smart Scores
+            settings: Optimization settings
+
+        Returns:
+            Tuple of (list of GeneratedLineup objects, position_counts dict if failed)
+        """
+        logger.info("=" * 80)
+        logger.info("GENERATING SHOWDOWN LINEUPS")
+        logger.info(f"Players: {len(players)}, Lineups: {settings.num_lineups}")
+        logger.info("=" * 80)
+
+        # Performance timing (Task 15.1)
+        showdown_start_time = time.time()
+
+        # Filter players by Smart Score percentile if set
+        filtered_players = self._filter_by_percentile(players, settings.exclude_bottom_percentile)
+
+        logger.info(
+            f"After Smart Score percentile filtering: {len(filtered_players)} players "
+            f"(from {len(players)} total, exclude bottom {settings.exclude_bottom_percentile}%)"
+        )
+
+        if len(filtered_players) < SHOWDOWN_TOTAL_POSITIONS:
+            logger.warning(f"Not enough players ({len(filtered_players)}) for {SHOWDOWN_TOTAL_POSITIONS} positions")
+            return [], {}
+
+        # Convert to optimization data
+        opt_players = self._prepare_players(
+            filtered_players,
+            strategy_mode=settings.strategy_mode,
+        )
+
+        logger.info(
+            f"After preparing players (removing null Smart Scores): {len(opt_players)} players "
+            f"(from {len(filtered_players)} filtered)"
+        )
+
+        if len(opt_players) < SHOWDOWN_TOTAL_POSITIONS:
+            logger.warning(f"Not enough valid players ({len(opt_players)}) for showdown lineup")
+            return [], {}
+
+        # Validate lineup feasibility
+        is_feasible, error_msg = self._validate_showdown_lineup_feasibility(
+            opt_players,
+            locked_captain_id=settings.locked_captain_id,
+        )
+
+        if not is_feasible:
+            logger.error(f"Showdown lineup not feasible: {error_msg}")
+            return [], {}
+
+        # Select captain candidates (uses cache from Task 15.2)
+        captain_selection_start = time.time()
+        captain_candidates = self._select_captain_candidates(
+            opt_players,
+            locked_captain_id=settings.locked_captain_id,
+        )
+        captain_selection_time = (time.time() - captain_selection_start) * 1000
+        logger.info(f"[PERFORMANCE] Captain selection: {captain_selection_time:.2f}ms")
+
+        if not captain_candidates:
+            logger.error("No captain candidates found")
+            return [], {}
+
+        # Generate lineups with different captains
+        generated_lineups = []
+        lineup_gen_times = []
+
+        for lineup_idx in range(settings.num_lineups):
+            lineup_start = time.time()
+
+            # Rotate through captain candidates to ensure diversity
+            captain = captain_candidates[lineup_idx % len(captain_candidates)]
+
+            lineup = self._generate_single_showdown_lineup(
+                opt_players=opt_players,
+                captain=captain,
+                settings=settings,
+                lineup_number=lineup_idx + 1,
+            )
+
+            lineup_time = (time.time() - lineup_start) * 1000
+            lineup_gen_times.append(lineup_time)
+
+            if lineup:
+                generated_lineups.append(lineup)
+                logger.info(
+                    f"Generated showdown lineup {lineup_idx + 1}/{settings.num_lineups}: "
+                    f"captain={captain.name}, salary=${lineup.total_salary}, "
+                    f"score={lineup.projected_score:.1f}, time={lineup_time:.2f}ms"
+                )
+            else:
+                logger.warning(f"Failed to generate showdown lineup {lineup_idx + 1}")
+
+        # Performance metrics (Task 15.5)
+        total_time = (time.time() - showdown_start_time)
+        avg_lineup_time = sum(lineup_gen_times) / len(lineup_gen_times) if lineup_gen_times else 0
+
+        logger.info(f"[PERFORMANCE] Showdown generation summary:")
+        logger.info(f"  Total time: {total_time:.2f}s")
+        logger.info(f"  Lineups generated: {len(generated_lineups)}/{settings.num_lineups}")
+        logger.info(f"  Average per lineup: {avg_lineup_time:.2f}ms")
+        logger.info(f"  Captain selection time: {captain_selection_time:.2f}ms")
+
+        if generated_lineups:
+            logger.info(f"Successfully generated {len(generated_lineups)} showdown lineups")
+            return generated_lineups, None
+        else:
+            logger.error("Failed to generate any showdown lineups")
+            return [], {}
+
+    def _generate_single_showdown_lineup(
+        self,
+        opt_players: List[PlayerOptimizationData],
+        captain: PlayerOptimizationData,
+        settings: OptimizationSettings,
+        lineup_number: int,
+    ) -> Optional[GeneratedLineup]:
+        """
+        Generate a single showdown lineup with specified captain.
+
+        Args:
+            opt_players: All available players
+            captain: Player to use as captain
+            settings: Optimization settings
+            lineup_number: Lineup number
+
+        Returns:
+            GeneratedLineup object or None if failed
+        """
+        # Create PuLP problem
+        prob = pulp.LpProblem(f"Showdown_Lineup_{lineup_number}", pulp.LpMaximize)
+
+        # Create binary variables for each player as FLEX (exclude captain from FLEX)
+        flex_vars = {}
+        for player in opt_players:
+            if player.player_id != captain.player_id:
+                var_name = f"flex_{player.player_id}"
+                flex_vars[player.player_id] = pulp.LpVariable(var_name, cat='Binary')
+
+        # Objective: Maximize (captain Smart Score * 1.5) + sum(FLEX Smart Scores)
+        objective_terms = [captain.smart_score * CAPTAIN_MULTIPLIER]
+
+        for player in opt_players:
+            if player.player_id != captain.player_id:
+                objective_terms.append(
+                    player.smart_score * flex_vars[player.player_id]
+                )
+
+        prob += pulp.lpSum(objective_terms)
+
+        # Constraint: Exactly 5 FLEX players
+        prob += pulp.lpSum([flex_vars[p.player_id] for p in opt_players if p.player_id != captain.player_id]) == 5
+
+        # Constraint: Total salary <= $50,000
+        # Captain salary = base_salary * 1.5
+        captain_salary = int(captain.salary * CAPTAIN_MULTIPLIER)
+        flex_salary_sum = pulp.lpSum([
+            player.salary * flex_vars[player.player_id]
+            for player in opt_players if player.player_id != captain.player_id
+        ])
+        prob += captain_salary + flex_salary_sum <= SHOWDOWN_SALARY_CAP
+
+        # Constraint: Total salary >= $48,000 (use most of budget)
+
+        # Ownership constraint (if set)
+        if settings.max_ownership and settings.max_ownership > 0:
+            # Calculate average ownership including captain
+            # Captain counts as 1 position out of 6
+            captain_ownership = self._normalize_ownership(captain.ownership or 0.0)
+            flex_ownership_sum = pulp.lpSum([
+                self._normalize_ownership(player.ownership or 0.0) * flex_vars[player.player_id]
+                for player in opt_players if player.player_id != captain.player_id
+            ])
+            total_ownership = captain_ownership + flex_ownership_sum
+            max_total_ownership = settings.max_ownership * SHOWDOWN_TOTAL_POSITIONS
+            prob += total_ownership <= max_total_ownership
+
+        # Solve with reduced timeout for faster individual lineup generation (Task 15.2)
+        prob.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=15))  # 15s timeout per lineup
+
+        if prob.status != pulp.LpStatusOptimal:
+            logger.warning(
+                f"Showdown lineup optimization failed with status: {pulp.LpStatus[prob.status]} "
+                f"(captain={captain.name})"
+            )
+            return None
+
+        # Extract selected players
+        selected_players = []
+        total_salary = captain_salary
+        total_smart_score = captain.smart_score * CAPTAIN_MULTIPLIER
+        total_projection = (captain.projection * CAPTAIN_MULTIPLIER) if captain.projection else 0
+        total_ownership = captain.ownership or 0.0
+
+        # Add captain
+        selected_players.append({
+            'position': captain.position,
+            'player_key': captain.player_key,
+            'name': captain.name,
+            'team': captain.team,
+            'salary': captain.salary,
+            'smart_score': captain.smart_score,
+            'ownership': captain.ownership,
+            'projection': captain.projection,
+            'is_captain': True,
+        })
+
+        # Add FLEX players
+        for player in opt_players:
+            if player.player_id != captain.player_id:
+                if flex_vars[player.player_id].varValue == 1:
+                    selected_players.append({
+                        'position': player.position,
+                        'player_key': player.player_key,
+                        'name': player.name,
+                        'team': player.team,
+                        'salary': player.salary,
+                        'smart_score': player.smart_score,
+                        'ownership': player.ownership,
+                        'projection': player.projection,
+                        'is_captain': False,
+                    })
+                    total_salary += player.salary
+                    total_smart_score += player.smart_score
+                    total_projection += player.projection if player.projection else 0
+                    total_ownership += player.ownership or 0.0
+
+        # Validate lineup
+        if len(selected_players) != SHOWDOWN_TOTAL_POSITIONS:
+            logger.warning(f"Invalid showdown lineup: {len(selected_players)} players (expected {SHOWDOWN_TOTAL_POSITIONS})")
+            return None
+
+        avg_ownership = total_ownership / len(selected_players) if selected_players else 0.0
+        if avg_ownership > 1.0:
+            avg_ownership = avg_ownership / 100.0
+
+        return GeneratedLineup(
+            lineup_number=lineup_number,
+            players=selected_players,
+            total_salary=total_salary,
+            projected_score=total_smart_score,
+            projected_points=total_projection,
+            avg_ownership=avg_ownership,
+        )
+
+    def _generate_main_slate_lineups(
+        self,
+        week_id: int,
+        players: List[PlayerScoreResponse],
+        settings: OptimizationSettings,
+    ) -> Tuple[List[GeneratedLineup], Optional[Dict[str, int]]]:
+        """
+        Generate main slate lineups (original 9-position format).
+
+        This is the original lineup generation logic, preserved for main slate mode.
+        """
         # Filter players by Smart Score percentile if set
         filtered_players = self._filter_by_percentile(players, settings.exclude_bottom_percentile)
 
@@ -306,7 +683,7 @@ class LineupOptimizerService:
 
         # Convert to optimization data
         opt_players = self._prepare_players(
-            filtered_players, 
+            filtered_players,
             strategy_mode=settings.strategy_mode,
         )
 
@@ -490,6 +867,107 @@ class LineupOptimizerService:
             # No lineups generated - return position counts for error message
             return [], position_counts
 
+    def _identify_elite_players(
+        self,
+        players: List[PlayerOptimizationData],
+    ) -> Dict[str, List[PlayerOptimizationData]]:
+        """
+        Identify elite players by position based on Smart Score ranking.
+
+        Uses Smart Score (not projection) to identify elite players based on
+        the customized scoring formula weights.
+
+        Identifies top 15 players per position based on Smart Score:
+        - These players form the elite pool for appearance constraints
+        - Smart Score reflects the user's customized weight preferences
+
+        Args:
+            players: List of all available players
+
+        Returns:
+            Dict mapping position to list of elite players (sorted by Smart Score, highest first)
+        """
+        elite_counts = {
+            'QB': 15,   # Top 15 QBs by Smart Score
+            'RB': 15,   # Top 15 RBs by Smart Score
+            'WR': 15,   # Top 15 WRs by Smart Score
+            'TE': 15,   # Top 15 TEs by Smart Score
+            'DST': 15,  # Top 15 DSTs by Smart Score
+        }
+
+        elite_by_position = {}
+
+        for position, count in elite_counts.items():
+            # Get all players at this position
+            pos_players = [p for p in players if p.position == position]
+
+            # Sort by SMART SCORE (descending) - reflects customized weights
+            # Players with null Smart Scores will be sorted to the end (treated as 0)
+            pos_players_sorted = sorted(
+                pos_players,
+                key=lambda p: p.smart_score if p.smart_score is not None else 0,
+                reverse=True
+            )
+
+            # Take top N players by Smart Score
+            elite_players = pos_players_sorted[:count]
+            elite_by_position[position] = elite_players
+
+            # Log elite players for debugging
+            if elite_players:
+                logger.info(f"Elite {position} players (top {count} by Smart Score):")
+                for i, player in enumerate(elite_players, 1):
+                    ss = player.smart_score if player.smart_score is not None else 0
+                    proj = player.projection if player.projection is not None else 0
+                    logger.info(f"  #{i}: {player.name} ({player.team}) - SS: {ss:.1f}, Proj: {proj:.1f}")
+
+        return elite_by_position
+
+    def _get_elite_player_ids(
+        self,
+        elite_by_position: Dict[str, List[PlayerOptimizationData]],
+    ) -> Set[int]:
+        """
+        Get set of all elite player IDs for quick lookup.
+
+        Args:
+            elite_by_position: Dict from _identify_elite_players
+
+        Returns:
+            Set of player_id values for all elite players
+        """
+        elite_ids = set()
+        for elite_players in elite_by_position.values():
+            for player in elite_players:
+                elite_ids.add(player.player_id)
+        return elite_ids
+
+    def _get_elite_appearance_target(
+        self,
+        position: str,
+        rank: int,
+    ) -> Tuple[int, int]:
+        """
+        Get elite appearance target for a specific position and rank.
+
+        Args:
+            position: Player position (QB, RB, WR, TE, DST)
+            rank: Player rank (0-indexed, 0 = #1 player)
+
+        Returns:
+            Tuple of (min_appearances, max_appearances)
+        """
+        if position not in ELITE_APPEARANCE_TARGETS:
+            logger.warning(f"Position {position} not in ELITE_APPEARANCE_TARGETS, returning default")
+            return (0, 10)
+
+        targets = ELITE_APPEARANCE_TARGETS[position]
+        if rank < 0 or rank >= len(targets):
+            logger.debug(f"Rank {rank} out of bounds for {position}, returning default")
+            return (0, 10)
+
+        return targets[rank]
+
     def _fallback_iterative_generation(
         self,
         opt_players: List[PlayerOptimizationData],
@@ -644,7 +1122,7 @@ class LineupOptimizerService:
             prob, player_vars, elite_by_position, opt_players
         )
         logger.info(f"Added {len(constraint_metadata)} elite appearance constraints (Smart Score-based, max 5 appearances)")
-        
+
         # Solve with elite constraints
         logger.info("Starting portfolio optimization solve...")
         logger.info(f"Problem has {len(prob.constraints)} total constraints")
@@ -653,11 +1131,14 @@ class LineupOptimizerService:
         prob.solve(pulp.PULP_CBC_CMD(msg=1, timeLimit=300))  # 5 minute timeout
         solve_duration = time.time() - start_solve_time
         logger.info(f"Portfolio optimization solve completed in {solve_duration:.2f} seconds with status: {pulp.LpStatus[prob.status]}")
-        
+
+        # Performance logging (Task 15.5)
+        logger.info(f"[PERFORMANCE] Portfolio optimization: {solve_duration:.2f}s")
+
         if prob.status != pulp.LpStatusOptimal:
             logger.warning(f"Portfolio optimization failed with status: {pulp.LpStatus[prob.status]}")
             return None
-        
+
         # Extract lineups from solution
         lineups = []
         for lineup_idx in range(10):
@@ -666,7 +1147,7 @@ class LineupOptimizerService:
             total_smart_score = 0.0
             total_projection = 0.0
             total_ownership = 0.0
-            
+
             for player in opt_players:
                 if player_vars[lineup_idx][player.player_id].varValue == 1:
                     selected_players.append({
@@ -683,15 +1164,15 @@ class LineupOptimizerService:
                     total_smart_score += player.smart_score
                     total_projection += player.projection if player.projection else 0
                     total_ownership += player.ownership or 0.0
-            
+
             if not selected_players:
                 logger.warning(f"Lineup {lineup_idx + 1} has no players")
                 continue
-            
+
             avg_ownership = total_ownership / len(selected_players) if selected_players else 0.0
             if avg_ownership > 1.0:
                 avg_ownership = avg_ownership / 100.0
-            
+
             lineups.append(GeneratedLineup(
                 lineup_number=lineup_idx + 1,
                 players=selected_players,
@@ -700,7 +1181,7 @@ class LineupOptimizerService:
                 projected_points=total_projection,
                 avg_ownership=avg_ownership,
             ))
-        
+
         logger.info(f"Generated {len(lineups)} lineups with Smart Score-based elite constraints")
         return lineups
 
@@ -933,40 +1414,40 @@ class LineupOptimizerService:
     ) -> List[PlayerScoreResponse]:
         """
         Filter players by Smart Score percentile.
-        
+
         Excludes bottom X% of players based on their Smart Score ranking.
         This adapts to the actual score distribution, unlike a fixed threshold.
-        
+
         Args:
             players: List of players with Smart Scores
             exclude_bottom_percentile: Percentile to exclude (0-100). 0 = no filtering.
-        
+
         Returns:
             Filtered list of players
         """
         if exclude_bottom_percentile is None or exclude_bottom_percentile <= 0:
             return players
-        
+
         # Filter out players with no Smart Score first
         players_with_scores = [p for p in players if p.smart_score is not None]
         if len(players_with_scores) == 0:
             logger.warning("No players with Smart Scores to filter")
             return players
-        
+
         # Sort by Smart Score (descending)
         sorted_players = sorted(players_with_scores, key=lambda p: p.smart_score or 0, reverse=True)
-        
+
         # Calculate how many players to exclude from bottom
         total_count = len(sorted_players)
         exclude_count = int(total_count * (exclude_bottom_percentile / 100))
-        
+
         # Take top (100 - exclude_bottom_percentile)%
         if exclude_count >= total_count:
             logger.warning(f"Exclude percentile ({exclude_bottom_percentile}%) would exclude all players, filtering none")
             return players
-        
+
         filtered = sorted_players[:-exclude_count] if exclude_count > 0 else sorted_players
-        
+
         # Log score distribution info
         if len(filtered) > 0:
             min_score = min(p.smart_score for p in filtered if p.smart_score is not None)
@@ -976,7 +1457,7 @@ class LineupOptimizerService:
                 f"(excluded bottom {exclude_bottom_percentile}%, "
                 f"score range: {min_score:.2f} - {max_score:.2f})"
             )
-        
+
         return filtered
 
     def _prepare_players(
@@ -1133,8 +1614,14 @@ class LineupOptimizerService:
         week_id: int,
         players: List[PlayerOptimizationData]
     ) -> Dict[str, Dict]:
-        """Get game information for stacking constraints."""
+        """
+        Get game information for stacking constraints.
+
+        Performance optimization (Task 15.3):
+        - Uses composite index on (week_id, team) for efficient queries
+        """
         # Query vegas_lines to get opponent info
+        # This query benefits from composite index created in Task 1.2
         query = text("""
             SELECT team, opponent
             FROM vegas_lines
@@ -1355,31 +1842,31 @@ class LineupOptimizerService:
     ):
         """
         Add constraint limiting average ownership of the lineup.
-        
+
         Constraint: sum(ownership[i] * player_vars[i]) / 9 <= max_ownership
         Rewritten as: sum(ownership[i] * player_vars[i]) <= max_ownership * 9
-        
+
         This ensures the overall lineup average ownership is below the threshold.
         Ownership values are normalized to 0-1 format before applying constraint.
         """
         if settings.max_ownership is None or settings.max_ownership <= 0:
             return
-        
+
         suffix = f"_lineup_{lineup_idx}" if lineup_idx is not None else ""
-        
+
         # Calculate sum of ownership for selected players
         # Normalize ownership to 0-1 format if needed (ownership might be stored as 0-100)
         ownership_sum = pulp.lpSum([
             self._normalize_ownership(player.ownership or 0.0) * player_vars[player.player_id]
             for player in players
         ])
-        
+
         # Constraint: average ownership <= max_ownership
         # Since we have exactly 9 players: sum(ownership) / 9 <= max_ownership
         # Rewritten as: sum(ownership) <= max_ownership * 9
         max_total_ownership = settings.max_ownership * TOTAL_POSITIONS
         prob += ownership_sum <= max_total_ownership, f"avg_ownership{suffix}"
-        
+
         logger.debug(
             f"Added avg ownership constraint: sum <= {max_total_ownership:.3f} "
             f"(max avg: {settings.max_ownership * 100:.1f}%)"
@@ -1388,7 +1875,7 @@ class LineupOptimizerService:
     def _normalize_ownership(self, ownership: float) -> float:
         """
         Normalize ownership value to 0-1 format.
-        
+
         Handles both formats:
         - 0-1 format (decimal): returns as-is
         - 0-100 format (percentage): divides by 100

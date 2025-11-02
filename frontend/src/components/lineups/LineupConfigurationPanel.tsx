@@ -6,6 +6,7 @@
  * - Strategy mode (Chalk/Balanced/Contrarian)
  * - Max players per team/game
  * - Stacking rules
+ * - Captain lock (showdown mode only)
  *
  * Design: Dark theme with orange accents
  */
@@ -28,19 +29,26 @@ import {
   IconButton,
   useTheme,
   useMediaQuery,
+  Tooltip,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import InfoIcon from '@mui/icons-material/Info';
 import type { OptimizationSettings } from '../../types/lineup.types';
+import type { PlayerScoreResponse } from '../../types/smartScore.types';
 
 export interface LineupConfigurationPanelProps {
   settings: OptimizationSettings;
   onSettingsChange: (settings: OptimizationSettings) => void;
+  mode?: 'main' | 'showdown';
+  selectedPlayers?: PlayerScoreResponse[];
 }
 
 export const LineupConfigurationPanel: React.FC<LineupConfigurationPanelProps> = ({
   settings,
   onSettingsChange,
+  mode = 'main',
+  selectedPlayers = [],
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -62,6 +70,15 @@ export const LineupConfigurationPanel: React.FC<LineupConfigurationPanelProps> =
       },
     });
   };
+
+  const handleCaptainChange = (captainId: string | null) => {
+    onSettingsChange({
+      ...settings,
+      locked_captain_id: captainId,
+    });
+  };
+
+  const isShowdownMode = mode === 'showdown';
 
   return (
     <Paper
@@ -136,39 +153,65 @@ export const LineupConfigurationPanel: React.FC<LineupConfigurationPanelProps> =
             </Select>
           </FormControl>
 
+          {/* Captain Lock (Showdown Only) */}
+          {isShowdownMode && (
+            <>
+              <Divider />
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
+                  <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
+                    Captain Selection
+                  </Typography>
+                  <Tooltip
+                    title="Captain will earn 1.5x salary and 1.5x points. Leave as 'None' to auto-select the best captain by value."
+                    arrow
+                  >
+                    <InfoIcon sx={{ fontSize: '0.875rem', color: 'text.secondary' }} />
+                  </Tooltip>
+                </Box>
+                <FormControl fullWidth size="small">
+                  <InputLabel sx={{ fontSize: '0.75rem' }}>Locked Captain (Optional)</InputLabel>
+                  <Select
+                    value={settings.locked_captain_id ?? ''}
+                    label="Locked Captain (Optional)"
+                    onChange={(e) => handleCaptainChange(e.target.value || null)}
+                    disabled={selectedPlayers.length === 0}
+                    sx={{
+                      fontSize: '0.875rem',
+                    }}
+                  >
+                    <MenuItem value="" sx={{ fontSize: '0.875rem' }}>
+                      None (Auto-select best captain)
+                    </MenuItem>
+                    {selectedPlayers.map((player) => (
+                      <MenuItem
+                        key={player.player_key}
+                        value={player.player_key}
+                        sx={{ fontSize: '0.875rem' }}
+                      >
+                        {player.name} ({player.position}) - ${(player.salary / 1000).toFixed(1)}K
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                {selectedPlayers.length === 0 && (
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontSize: '0.65rem',
+                      color: 'text.secondary',
+                      display: 'block',
+                      mt: 0.5
+                    }}
+                  >
+                    Select players first to enable captain lock
+                  </Typography>
+                )}
+              </Box>
+            </>
+          )}
+
           <Divider />
-
-          {/* Max Players Per Team */}
-          <TextField
-            label="Max Players Per Team"
-            type="number"
-            value={settings.max_players_per_team}
-            onChange={(e) => handleChange('max_players_per_team', parseInt(e.target.value) || 4)}
-            inputProps={{ min: 1, max: 9 }}
-            size="small"
-            fullWidth
-            sx={{
-              '& .MuiInputBase-input': {
-                fontSize: '0.875rem',
-              },
-            }}
-          />
-
-          {/* Max Players Per Game */}
-          <TextField
-            label="Max Players Per Game"
-            type="number"
-            value={settings.max_players_per_game}
-            onChange={(e) => handleChange('max_players_per_game', parseInt(e.target.value) || 5)}
-            inputProps={{ min: 1, max: 9 }}
-            size="small"
-            fullWidth
-            sx={{
-              '& .MuiInputBase-input': {
-                fontSize: '0.875rem',
-              },
-            }}
-          />
 
           {/* Max Ownership */}
           <TextField
@@ -191,58 +234,95 @@ export const LineupConfigurationPanel: React.FC<LineupConfigurationPanelProps> =
             }}
           />
 
-          <Divider />
-
-          {/* Stacking Rules */}
-          <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem', mb: 1 }}>
-            Stacking Rules
-          </Typography>
-
-          <FormControlLabel
-            control={
-              <Switch
-                checked={settings.stacking_rules?.qb_wr_stack_enabled || false}
-                onChange={(e) => handleStackingChange('qb_wr_stack_enabled', e.target.checked)}
+          {/* Main Slate Only Constraints */}
+          {!isShowdownMode && (
+            <>
+              {/* Max Players Per Team */}
+              <TextField
+                label="Max Players Per Team"
+                type="number"
+                value={settings.max_players_per_team}
+                onChange={(e) => handleChange('max_players_per_team', parseInt(e.target.value) || 4)}
+                inputProps={{ min: 1, max: 9 }}
                 size="small"
+                fullWidth
                 sx={{
-                  '& .MuiSwitch-switchBase.Mui-checked': {
-                    color: '#ff6b35',
-                  },
-                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                    backgroundColor: '#ff6b35',
+                  '& .MuiInputBase-input': {
+                    fontSize: '0.875rem',
                   },
                 }}
               />
-            }
-            label={
-              <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                QB + WR Stack (Same Team)
-              </Typography>
-            }
-          />
 
-          <FormControlLabel
-            control={
-              <Switch
-                checked={settings.stacking_rules?.bring_back_enabled || false}
-                onChange={(e) => handleStackingChange('bring_back_enabled', e.target.checked)}
+              {/* Max Players Per Game */}
+              <TextField
+                label="Max Players Per Game"
+                type="number"
+                value={settings.max_players_per_game}
+                onChange={(e) => handleChange('max_players_per_game', parseInt(e.target.value) || 5)}
+                inputProps={{ min: 1, max: 9 }}
                 size="small"
+                fullWidth
                 sx={{
-                  '& .MuiSwitch-switchBase.Mui-checked': {
-                    color: '#ff6b35',
-                  },
-                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                    backgroundColor: '#ff6b35',
+                  '& .MuiInputBase-input': {
+                    fontSize: '0.875rem',
                   },
                 }}
               />
-            }
-            label={
-              <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                Bring-Back (Opposing Team)
+
+              <Divider />
+
+              {/* Stacking Rules */}
+              <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem', mb: 1 }}>
+                Stacking Rules
               </Typography>
-            }
-          />
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={settings.stacking_rules?.qb_wr_stack_enabled || false}
+                    onChange={(e) => handleStackingChange('qb_wr_stack_enabled', e.target.checked)}
+                    size="small"
+                    sx={{
+                      '& .MuiSwitch-switchBase.Mui-checked': {
+                        color: '#ff6b35',
+                      },
+                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                        backgroundColor: '#ff6b35',
+                      },
+                    }}
+                  />
+                }
+                label={
+                  <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
+                    QB + WR Stack (Same Team)
+                  </Typography>
+                }
+              />
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={settings.stacking_rules?.bring_back_enabled || false}
+                    onChange={(e) => handleStackingChange('bring_back_enabled', e.target.checked)}
+                    size="small"
+                    sx={{
+                      '& .MuiSwitch-switchBase.Mui-checked': {
+                        color: '#ff6b35',
+                      },
+                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                        backgroundColor: '#ff6b35',
+                      },
+                    }}
+                  />
+                }
+                label={
+                  <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
+                    Bring-Back (Opposing Team)
+                  </Typography>
+                }
+              />
+            </>
+          )}
         </Stack>
       </Collapse>
     </Paper>
@@ -250,4 +330,3 @@ export const LineupConfigurationPanel: React.FC<LineupConfigurationPanelProps> =
 };
 
 export default LineupConfigurationPanel;
-

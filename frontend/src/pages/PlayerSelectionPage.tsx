@@ -10,10 +10,15 @@
  * - Review and approve selected players
  * - Send to lineup creation page
  *
+ * Mode-aware: Supports both Main Slate and Showdown contest modes
+ * - Loads players based on active contest mode
+ * - Clears selections when mode changes
+ * - Displays mode in page header
+ *
  * Design: Dark theme with orange accents
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Container,
   Box,
@@ -36,12 +41,14 @@ import {
   Chip,
   FormControlLabel,
   Switch,
+  Snackbar,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useWeekStore } from '../store/weekStore';
 import { useSmartScore, useWeightProfile } from '../hooks';
+import { useMode } from '../hooks/useMode';
 import type { PlayerScoreResponse } from '../types/smartScore.types';
 
 export const PlayerSelectionPage: React.FC = () => {
@@ -52,6 +59,7 @@ export const PlayerSelectionPage: React.FC = () => {
   const currentWeekNumber = useWeekStore((state) => state.currentWeek);
   const getCurrentWeekData = useWeekStore((state) => state.getCurrentWeekData);
   const currentWeek = getCurrentWeekData();
+  const { mode } = useMode();
 
   const weekId = currentWeek?.id ?? null;
   const { currentWeights, currentConfig } = useWeightProfile();
@@ -64,6 +72,10 @@ export const PlayerSelectionPage: React.FC = () => {
   const [meets35XValue, setMeets35XValue] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showModeChangeToast, setShowModeChangeToast] = useState(false);
+
+  // Track previous mode to detect changes
+  const previousMode = useRef(mode);
 
   // Load players with Smart Scores
   useEffect(() => {
@@ -98,8 +110,26 @@ export const PlayerSelectionPage: React.FC = () => {
     };
     // Note: We intentionally exclude calculateScores from dependencies to prevent infinite loops
     // The function reference changes on every render, but the actual calculation logic doesn't
+    // We include mode to trigger refetch when mode changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekId, JSON.stringify(currentWeights), JSON.stringify(currentConfig)]);
+  }, [weekId, mode, JSON.stringify(currentWeights), JSON.stringify(currentConfig)]);
+
+  // Clear player selections when mode changes
+  useEffect(() => {
+    // Skip on initial mount
+    if (previousMode.current === mode) {
+      return;
+    }
+
+    // Mode has changed - clear selections
+    if (selectedPlayerIds.size > 0) {
+      setSelectedPlayerIds(new Set());
+      setShowModeChangeToast(true);
+    }
+
+    // Update previous mode reference
+    previousMode.current = mode;
+  }, [mode, selectedPlayerIds.size]);
 
   // Filter players by percentile, ITT, and 3.5X value
   const filteredPlayers = useMemo(() => {
@@ -205,6 +235,9 @@ export const PlayerSelectionPage: React.FC = () => {
     return byPosition;
   }, [selectedPlayers]);
 
+  // Get mode display name
+  const modeDisplayName = mode === 'showdown' ? 'Showdown' : 'Main Slate';
+
   if (!weekId) {
     return (
       <Container maxWidth="xl">
@@ -222,7 +255,7 @@ export const PlayerSelectionPage: React.FC = () => {
           Select Players for Lineup Optimization
         </Typography>
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          Week {currentWeek?.week_number} - {currentWeek?.season}
+          {modeDisplayName} - Week {currentWeek?.week_number} - {currentWeek?.season}
         </Typography>
       </Box>
 
@@ -574,9 +607,30 @@ export const PlayerSelectionPage: React.FC = () => {
           Approve & Send to Lineups ({selectedPlayerIds.size} players)
         </Button>
       </Box>
+
+      {/* Mode Change Toast Notification */}
+      <Snackbar
+        open={showModeChangeToast}
+        autoHideDuration={4000}
+        onClose={() => setShowModeChangeToast(false)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setShowModeChangeToast(false)}
+          severity="info"
+          sx={{
+            backgroundColor: '#1a1a1a',
+            border: '1px solid rgba(255, 107, 53, 0.3)',
+            '& .MuiAlert-icon': {
+              color: '#ff6b35',
+            },
+          }}
+        >
+          Mode changed. Player selections cleared.
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };
 
 export default PlayerSelectionPage;
-

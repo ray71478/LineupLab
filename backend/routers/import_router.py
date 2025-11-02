@@ -93,6 +93,7 @@ async def import_linestar(
     file: UploadFile = File(...),
     week_id: int = Form(...),
     detected_week: Optional[int] = Form(None),
+    contest_mode: str = Form("main"),
     db: Any = Depends(_get_current_db_dependency),
 ) -> dict:
     """
@@ -102,27 +103,33 @@ async def import_linestar(
         file: XLSX file upload
         week_id: Selected week number (1-18) from header
         detected_week: Week detected from filename (optional)
+        contest_mode: Contest mode ('main' or 'showdown', default='main')
         db: Database session
 
     Returns:
-        Import summary with player count and changes
+        Import summary with player count, changes, and contest mode confirmation
     """
     try:
         # Validate inputs
-        logger.info(f"Import request received: week_id={week_id} (type: {type(week_id)}), filename={file.filename}")
+        logger.info(f"Import request received: week_id={week_id} (type: {type(week_id)}), filename={file.filename}, contest_mode={contest_mode}")
         validate_week_number(week_id)
         validate_file_extension(file.filename)
 
+        # Validate contest_mode
+        if contest_mode not in ['main', 'showdown']:
+            logger.warning(f"Invalid contest_mode '{contest_mode}', defaulting to 'main'")
+            contest_mode = 'main'
+
         # Find the week in any season (prefer most recent season)
         logger.info(f"Looking for week_number={week_id} in database")
-        
+
         # Test database connection first
         try:
             test_result = db.execute(text("SELECT COUNT(*) FROM weeks")).scalar()
             logger.info(f"Database connection test: Found {test_result} total weeks")
         except Exception as e:
             logger.error(f"Database connection test failed: {e}")
-        
+
         week_result = db.execute(
             text("""
                 SELECT id, season FROM weeks
@@ -132,10 +139,10 @@ async def import_linestar(
             """),
             {"week_number": week_id}
         ).fetchone()
-        
+
         # Debug: check what fetchone() actually returns
         logger.info(f"fetchone() result type: {type(week_result)}, value: {week_result}")
-        
+
         if not week_result:
             # Log what weeks exist for debugging
             try:
@@ -149,7 +156,7 @@ async def import_linestar(
                 "success": False,
                 "error": f"Week {week_id} not found in database. Please ensure the week exists before importing.",
             }
-        
+
         actual_week_id = week_result[0]
         season = week_result[1]
         logger.info(f"Found week {week_id}: id={actual_week_id}, season={season}")
@@ -237,22 +244,22 @@ async def import_linestar(
                     # Note: import_id will be set after import record creation
                     unmatched_count += 1
 
-        # Delete existing LineStar data for this week
+        # Delete existing LineStar data for this week and contest_mode
         stmt = text("""
             DELETE FROM player_pools
-            WHERE week_id = :week_id AND source = 'LineStar'
+            WHERE week_id = :week_id AND source = 'LineStar' AND contest_mode = :contest_mode
         """)
-        db.execute(stmt, {"week_id": actual_week_id})
+        db.execute(stmt, {"week_id": actual_week_id, "contest_mode": contest_mode})
 
-        # Bulk insert matched players
+        # Bulk insert matched players with contest_mode
         if matched_players:
             insert_stmt = text("""
                 INSERT INTO player_pools
                 (week_id, player_key, name, team, position, salary, projection,
-                 ownership, ceiling, floor, notes, source, uploaded_at, projection_source, opponent_rank_category)
+                 ownership, ceiling, floor, notes, source, uploaded_at, projection_source, opponent_rank_category, contest_mode)
                 VALUES (:week_id, :player_key, :name, :team, :position, :salary,
                         :projection, :ownership, :ceiling, :floor, :notes, :source,
-                        CURRENT_TIMESTAMP, :projection_source, :opponent_rank_category)
+                        CURRENT_TIMESTAMP, :projection_source, :opponent_rank_category, :contest_mode)
             """)
 
             for player in matched_players:
@@ -273,6 +280,7 @@ async def import_linestar(
                         "source": "LineStar",
                         "projection_source": player.get("projection_source"),
                         "opponent_rank_category": player.get("opponent_rank_category"),
+                        "contest_mode": contest_mode,
                     },
                 )
 
@@ -310,10 +318,11 @@ async def import_linestar(
         return {
             "success": True,
             "import_id": str(import_id),
-            "message": f"{len(matched_players)} players imported successfully",
+            "message": f"{len(matched_players)} players imported successfully for {contest_mode} mode",
             "player_count": len(matched_players),
             "changes_from_previous": changes,
             "unmatched_count": unmatched_count,
+            "contest_mode": contest_mode,
         }
 
     except DataImportError as e:
@@ -346,6 +355,7 @@ async def import_draftkings(
     file: UploadFile = File(...),
     week_id: int = Form(...),
     detected_week: Optional[int] = Form(None),
+    contest_mode: str = Form("main"),
     db: Any = Depends(_get_current_db_dependency),
 ) -> dict:
     """
@@ -357,20 +367,26 @@ async def import_draftkings(
         file: XLSX file upload
         week_id: Selected week ID from header
         detected_week: Week detected from filename (optional)
+        contest_mode: Contest mode ('main' or 'showdown', default='main')
         db: Database session
 
     Returns:
-        Import summary with player count and changes
+        Import summary with player count, changes, and contest mode confirmation
     """
     try:
         # Validate inputs
-        logger.info(f"DraftKings import request received: week_id={week_id} (type: {type(week_id)}), filename={file.filename}")
+        logger.info(f"DraftKings import request received: week_id={week_id} (type: {type(week_id)}), filename={file.filename}, contest_mode={contest_mode}")
         validate_week_number(week_id)
         validate_file_extension(file.filename)
 
+        # Validate contest_mode
+        if contest_mode not in ['main', 'showdown']:
+            logger.warning(f"Invalid contest_mode '{contest_mode}', defaulting to 'main'")
+            contest_mode = 'main'
+
         # Find the week in any season (prefer most recent season)
         logger.info(f"Looking for week_number={week_id} in database")
-        
+
         week_result = db.execute(
             text("""
                 SELECT id, season FROM weeks
@@ -380,7 +396,7 @@ async def import_draftkings(
             """),
             {"week_number": week_id}
         ).fetchone()
-        
+
         if not week_result:
             # Log what weeks exist for debugging
             try:
@@ -394,7 +410,7 @@ async def import_draftkings(
                 "success": False,
                 "error": f"Week {week_id} not found in database. Please ensure the week exists before importing.",
             }
-        
+
         actual_week_id = week_result[0]
         season = week_result[1]
         logger.info(f"Found week {week_id}: id={actual_week_id}, season={season}")
@@ -473,21 +489,21 @@ async def import_draftkings(
                 else:
                     unmatched_count += 1
 
-        # Delete ALL existing players for this week (DraftKings replaces everything)
-        stmt = text("DELETE FROM player_pools WHERE week_id = :week_id")
-        db.execute(stmt, {"week_id": actual_week_id})
+        # Delete ALL existing players for this week and contest_mode (DraftKings replaces everything for the mode)
+        stmt = text("DELETE FROM player_pools WHERE week_id = :week_id AND contest_mode = :contest_mode")
+        db.execute(stmt, {"week_id": actual_week_id, "contest_mode": contest_mode})
 
-        # Bulk insert matched players
+        # Bulk insert matched players with contest_mode
         if matched_players:
             insert_stmt = text("""
                 INSERT INTO player_pools
                 (week_id, player_key, name, team, position, salary, projection,
-                 ownership, ceiling, floor, notes, source, uploaded_at, projection_source, 
-                 opponent_rank_category, draftkings_id, opponent, game_time, implied_team_total)
+                 ownership, ceiling, floor, notes, source, uploaded_at, projection_source,
+                 opponent_rank_category, draftkings_id, opponent, game_time, implied_team_total, contest_mode)
                 VALUES (:week_id, :player_key, :name, :team, :position, :salary,
                         :projection, :ownership, :ceiling, :floor, :notes, :source,
                         CURRENT_TIMESTAMP, :projection_source, :opponent_rank_category,
-                        :draftkings_id, :opponent, :game_time, :implied_team_total)
+                        :draftkings_id, :opponent, :game_time, :implied_team_total, :contest_mode)
             """)
 
             for player in matched_players:
@@ -512,6 +528,7 @@ async def import_draftkings(
                         "opponent": player.get("opponent"),
                         "game_time": player.get("game_time"),
                         "implied_team_total": player.get("implied_team_total"),
+                        "contest_mode": contest_mode,
                     },
                 )
 
@@ -549,10 +566,11 @@ async def import_draftkings(
         return {
             "success": True,
             "import_id": str(import_id),
-            "message": f"{len(matched_players)} players imported successfully",
+            "message": f"{len(matched_players)} players imported successfully for {contest_mode} mode",
             "player_count": len(matched_players),
             "changes_from_previous": changes,
             "unmatched_count": unmatched_count,
+            "contest_mode": contest_mode,
         }
 
     except DataImportError as e:

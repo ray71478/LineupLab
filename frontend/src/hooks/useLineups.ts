@@ -2,9 +2,9 @@
  * useLineups Hook
  *
  * Custom hook for managing lineup generation and saving.
- * - Generates optimized lineups
+ * - Generates optimized lineups with contest mode support
  * - Saves selected lineups
- * - Fetches saved lineups
+ * - Fetches saved lineups filtered by mode
  * - Manages loading and error states
  */
 
@@ -17,6 +17,7 @@ import type {
   SavedLineup,
   GeneratedLineup,
 } from '../types/lineup.types';
+import { useMode } from './useMode';
 
 export interface UseLineupsReturn {
   generateLineups: (request: LineupOptimizationRequest) => Promise<GeneratedLineup[]>;
@@ -72,10 +73,10 @@ async function saveLineups(request: SaveLineupsRequest): Promise<SaveLineupsResp
 }
 
 /**
- * Fetch saved lineups for a week
+ * Fetch saved lineups for a week and contest mode
  */
-async function fetchSavedLineups(weekId: number): Promise<SavedLineup[]> {
-  const response = await fetch(`/api/lineups/saved/${weekId}`);
+async function fetchSavedLineups(weekId: number, contestMode: string): Promise<SavedLineup[]> {
+  const response = await fetch(`/api/lineups/saved/${weekId}?contest_mode=${contestMode}`);
 
   if (!response.ok) {
     const error = await response.json();
@@ -88,10 +89,11 @@ async function fetchSavedLineups(weekId: number): Promise<SavedLineup[]> {
 /**
  * useLineups Hook
  *
- * Manages lineup generation and saving
+ * Manages lineup generation and saving with contest mode awareness
  */
 export const useLineups = (weekId: number | null): UseLineupsReturn => {
   const queryClient = useQueryClient();
+  const { mode } = useMode();
 
   // Generate lineups mutation
   const generateMutation = useMutation({
@@ -99,7 +101,7 @@ export const useLineups = (weekId: number | null): UseLineupsReturn => {
     onSuccess: () => {
       // Invalidate saved lineups query to refresh if needed
       if (weekId !== null) {
-        queryClient.invalidateQueries({ queryKey: ['saved-lineups', weekId] });
+        queryClient.invalidateQueries({ queryKey: ['saved-lineups', weekId, mode] });
       }
     },
   });
@@ -110,7 +112,7 @@ export const useLineups = (weekId: number | null): UseLineupsReturn => {
     onSuccess: () => {
       // Refresh saved lineups
       if (weekId !== null) {
-        queryClient.invalidateQueries({ queryKey: ['saved-lineups', weekId] });
+        queryClient.invalidateQueries({ queryKey: ['saved-lineups', weekId, mode] });
       }
     },
   });
@@ -121,8 +123,8 @@ export const useLineups = (weekId: number | null): UseLineupsReturn => {
     isLoading: isLoadingSaved,
     refetch: refetchSaved,
   } = useQuery({
-    queryKey: ['saved-lineups', weekId],
-    queryFn: () => fetchSavedLineups(weekId!),
+    queryKey: ['saved-lineups', weekId, mode],
+    queryFn: () => fetchSavedLineups(weekId!, mode),
     enabled: weekId !== null,
   });
 
@@ -136,4 +138,3 @@ export const useLineups = (weekId: number | null): UseLineupsReturn => {
     refetchSaved,
   };
 };
-

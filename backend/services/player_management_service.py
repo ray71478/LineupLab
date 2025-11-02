@@ -53,6 +53,7 @@ class PlayerManagementService:
         sort_dir: str = "asc",
         limit: int = 200,
         offset: int = 0,
+        contest_mode: str = "main",
     ) -> Tuple[List[PlayerResponse], int, int]:
         """
         Fetch all players for a specific week with filtering and sorting.
@@ -60,15 +61,17 @@ class PlayerManagementService:
         Uses indexed queries for optimal performance:
         - idx_player_pools_week_position_team for position/team filters
         - idx_player_pools_week_key for exact lookups
+        - idx_player_pool_week_mode for mode filtering
 
         Args:
             week_id: Week ID to fetch players for
-            position: Optional position filter (QB, RB, WR, TE, DST)
+            position: Optional position filter (QB, RB, WR, TE, DST, K)
             team: Optional team filter (e.g., KC, LAR)
             sort_by: Column to sort by (optional)
             sort_dir: Sort direction (asc or desc)
             limit: Max results (1-200)
             offset: Pagination offset
+            contest_mode: Contest mode filter ('main' or 'showdown')
 
         Returns:
             Tuple of (list of PlayerResponse, total count, unmatched count)
@@ -106,14 +109,15 @@ class PlayerManagementService:
                     p.projection_median_calibrated,
                     p.projection_ceiling_original,
                     p.projection_ceiling_calibrated,
-                    COALESCE(p.calibration_applied, false) as calibration_applied
+                    COALESCE(p.calibration_applied, false) as calibration_applied,
+                    p.contest_mode
                 FROM player_pools p
                 LEFT JOIN unmatched_players u ON p.player_key = u.suggested_player_key
-                WHERE p.week_id = :week_id
+                WHERE p.week_id = :week_id AND p.contest_mode = :contest_mode
             """
 
             # Add filters (uses idx_player_pools_week_position_team)
-            params = {"week_id": week_id}
+            params = {"week_id": week_id, "contest_mode": contest_mode}
             if position:
                 sql += " AND p.position = :position"
                 params["position"] = position.upper()
@@ -143,7 +147,7 @@ class PlayerManagementService:
                 SELECT COUNT(*)
                 FROM player_pools p
                 LEFT JOIN unmatched_players u ON p.player_key = u.suggested_player_key
-                WHERE p.week_id = :week_id
+                WHERE p.week_id = :week_id AND p.contest_mode = :contest_mode
             """
             if position:
                 count_sql += " AND p.position = :position"
@@ -196,19 +200,20 @@ class PlayerManagementService:
                     projection_ceiling_original=row[18],
                     projection_ceiling_calibrated=row[19],
                     calibration_applied=row[20],
+                    contest_mode=row[21],
                 )
                 players.append(player)
 
             elapsed = time.time() - start_time
             logger.info(
-                f"Fetched {len(players)} players for week {week_id} in {elapsed:.2f}s"
+                f"Fetched {len(players)} players for week {week_id} ({contest_mode} mode) in {elapsed:.2f}s"
             )
 
             return players, total, unmatched_count
 
         except Exception as e:
             logger.error(
-                f"Error fetching players for week {week_id}: {str(e)}", exc_info=True
+                f"Error fetching players for week {week_id} ({contest_mode} mode): {str(e)}", exc_info=True
             )
             return [], 0, 0
 
@@ -514,7 +519,8 @@ class PlayerManagementService:
                     projection_median_calibrated,
                     projection_ceiling_original,
                     projection_ceiling_calibrated,
-                    COALESCE(calibration_applied, false) as calibration_applied
+                    COALESCE(calibration_applied, false) as calibration_applied,
+                    contest_mode
                 FROM player_pools
                 WHERE team = :team
                   AND position = :position
@@ -580,6 +586,7 @@ class PlayerManagementService:
                                 projection_ceiling_original=row[17],
                                 projection_ceiling_calibrated=row[18],
                                 calibration_applied=row[19],
+                                contest_mode=row[20],
                             )
                             suggestions.append(suggestion)
                             break

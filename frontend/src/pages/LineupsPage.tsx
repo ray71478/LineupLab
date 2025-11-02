@@ -28,7 +28,8 @@ import { useNavigate } from 'react-router-dom';
 import { useWeekStore } from '../store/weekStore';
 import { useLineups } from '../hooks/useLineups';
 import { useWeightProfile } from '../hooks';
-import type { OptimizationSettings, GeneratedLineup } from '../types/lineup.types';
+import { useMode } from '../hooks/useMode';
+import type { OptimizationSettings, GeneratedLineup, LineupOptimizationRequest } from '../types/lineup.types';
 import type { PlayerScoreResponse } from '../types/smartScore.types';
 
 const LineupConfigurationPanel = React.lazy(() =>
@@ -66,6 +67,7 @@ export const LineupsPage: React.FC = () => {
   const currentWeekNumber = useWeekStore((state) => state.currentWeek);
   const getCurrentWeekData = useWeekStore((state) => state.getCurrentWeekData);
   const currentWeek = getCurrentWeekData();
+  const { mode } = useMode();
 
   const weekId = currentWeek?.id ?? null;
   const { profiles, currentProfile, currentWeights, currentConfig } = useWeightProfile();
@@ -91,6 +93,16 @@ export const LineupsPage: React.FC = () => {
     }
   }, []);
 
+  // Clear locked captain when mode or week changes
+  useEffect(() => {
+    if (settings.locked_captain_id) {
+      setSettings((prev) => ({
+        ...prev,
+        locked_captain_id: null,
+      }));
+    }
+  }, [mode, weekId]);
+
   const handleGenerate = async () => {
     if (!weekId) {
       setError('Please select a week first');
@@ -102,11 +114,17 @@ export const LineupsPage: React.FC = () => {
       const request: LineupOptimizationRequest = {
         week_id: weekId,
         settings,
+        contest_mode: mode, // Include contest mode
       };
 
       // Only include selected_player_ids if players were actually selected
       if (selectedPlayers && selectedPlayers.length > 0) {
         request.selected_player_ids = selectedPlayers.map((p) => p.player_id);
+      }
+
+      // Include locked_captain_id from settings if showdown mode
+      if (mode === 'showdown' && settings.locked_captain_id) {
+        request.locked_captain_id = settings.locked_captain_id;
       }
 
       // Include customized weights and config so lineups use the same Smart Scores
@@ -143,6 +161,7 @@ export const LineupsPage: React.FC = () => {
         lineups: selectedLineups,
         weight_profile_id: currentProfile?.id,
         strategy_mode: settings.strategy_mode,
+        contest_mode: mode, // Include contest mode
       });
       // Clear selected lineups after saving
       setGeneratedLineups([]);
@@ -189,7 +208,7 @@ export const LineupsPage: React.FC = () => {
 
         {selectedPlayers && selectedPlayers.length > 0 && (
           <Alert severity="info" sx={{ mb: 2 }}>
-            Using {selectedPlayers.length} selected players for optimization. 
+            Using {selectedPlayers.length} selected players for optimization.
             <Button
               size="small"
               onClick={() => navigate('/player-selection')}
@@ -209,7 +228,7 @@ export const LineupsPage: React.FC = () => {
         {/* Progress Indicator */}
         {isGenerating && (
           <React.Suspense fallback={<CircularProgress />}>
-            <LineupGenerationProgress 
+            <LineupGenerationProgress
               isGenerating={isGenerating}
               numLineups={settings.num_lineups}
               numPlayers={selectedPlayers?.length || undefined}
@@ -221,7 +240,12 @@ export const LineupsPage: React.FC = () => {
         <Box sx={{ mb: 3 }}>
           <Box sx={{ mb: 2 }}>
             <React.Suspense fallback={<CircularProgress />}>
-              <LineupConfigurationPanel settings={settings} onSettingsChange={setSettings} />
+              <LineupConfigurationPanel
+                settings={settings}
+                onSettingsChange={setSettings}
+                mode={mode}
+                selectedPlayers={selectedPlayers || []}
+              />
             </React.Suspense>
           </Box>
 

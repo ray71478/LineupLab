@@ -386,21 +386,23 @@ class DataImporter:
         source: str,
         delete_existing: bool = False,
         delete_all_sources: bool = False,
+        contest_mode: str = "main",
     ) -> int:
         """
         Bulk insert players into player_pools table.
 
         Applies calibration before insertion if active calibration exists for the week.
-        Optionally deletes existing data before insertion based on source type:
-        - LineStar: Delete only LineStar data for this week
-        - DraftKings: Delete ALL data for this week (replaces LineStar)
+        Optionally deletes existing data before insertion based on source type and contest mode:
+        - LineStar: Delete only LineStar data for this week and contest mode
+        - DraftKings: Delete ALL data for this week and contest mode (replaces LineStar)
 
         Args:
             players: List of normalized player dictionaries
             week_id: Week ID for insertion
             source: Source type ('LineStar' or 'DraftKings')
-            delete_existing: If True, delete existing LineStar data for week
-            delete_all_sources: If True, delete ALL data for week regardless of source
+            delete_existing: If True, delete existing LineStar data for week/mode
+            delete_all_sources: If True, delete ALL data for week/mode regardless of source
+            contest_mode: Contest mode ('main' or 'showdown')
 
         Returns:
             Number of rows inserted
@@ -429,26 +431,28 @@ class DataImporter:
 
             # Delete existing data if requested
             if delete_all_sources:
-                # DraftKings: Delete ALL players for this week
-                delete_stmt = delete(
-                    text("player_pools")
-                ).where(text("week_id = :week_id"))
-                self.session.execute(delete_stmt, {"week_id": week_id})
-                logger.info(f"Deleted all existing players for week {week_id}")
+                # Delete ALL players for this week and contest mode
+                delete_stmt = text("""
+                    DELETE FROM player_pools
+                    WHERE week_id = :week_id AND contest_mode = :contest_mode
+                """)
+                self.session.execute(delete_stmt, {"week_id": week_id, "contest_mode": contest_mode})
+                logger.info(f"Deleted all existing players for week {week_id} ({contest_mode} mode)")
 
             elif delete_existing:
-                # LineStar: Delete only LineStar data for this week
-                delete_stmt = delete(text("player_pools")).where(
-                    text("week_id = :week_id AND source = :source")
-                )
+                # Delete only source-specific data for this week and contest mode
+                delete_stmt = text("""
+                    DELETE FROM player_pools
+                    WHERE week_id = :week_id AND source = :source AND contest_mode = :contest_mode
+                """)
                 self.session.execute(
-                    delete_stmt, {"week_id": week_id, "source": source}
+                    delete_stmt, {"week_id": week_id, "source": source, "contest_mode": contest_mode}
                 )
                 logger.info(
-                    f"Deleted existing {source} players for week {week_id}"
+                    f"Deleted existing {source} players for week {week_id} ({contest_mode} mode)"
                 )
 
-            # Prepare records for insertion with calibrated columns
+            # Prepare records for insertion with calibrated columns and contest_mode
             insert_records = [
                 {
                     "week_id": week_id,
@@ -472,6 +476,7 @@ class DataImporter:
                     "projection_ceiling_original": p.get("projection_ceiling_original"),
                     "projection_ceiling_calibrated": p.get("projection_ceiling_calibrated"),
                     "calibration_applied": p.get("calibration_applied", False),
+                    "contest_mode": contest_mode,
                 }
                 for p in players
             ]
@@ -485,14 +490,14 @@ class DataImporter:
                      projection_floor_original, projection_floor_calibrated,
                      projection_median_original, projection_median_calibrated,
                      projection_ceiling_original, projection_ceiling_calibrated,
-                     calibration_applied)
+                     calibration_applied, contest_mode)
                     VALUES (:week_id, :player_key, :name, :team, :position, :salary,
                             :projection, :ownership, :ceiling, :floor, :notes, :source,
                             :projection_source, :opponent_rank_category,
                             :projection_floor_original, :projection_floor_calibrated,
                             :projection_median_original, :projection_median_calibrated,
                             :projection_ceiling_original, :projection_ceiling_calibrated,
-                            :calibration_applied)
+                            :calibration_applied, :contest_mode)
                 """)
 
                 for record in insert_records:
@@ -506,7 +511,7 @@ class DataImporter:
             self.session.flush()
 
             logger.info(
-                f"Bulk inserted {len(insert_records)} players for week {week_id}"
+                f"Bulk inserted {len(insert_records)} players for week {week_id} ({contest_mode} mode)"
             )
 
             return len(insert_records)

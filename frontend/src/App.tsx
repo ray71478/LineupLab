@@ -61,6 +61,7 @@ import MainLayout from './components/layout/MainLayout'
 import ImportDataButton from '@/components/import/ImportDataButton'
 import { RefreshMySportsFeedsButton } from '@/components/refresh/RefreshMySportsFeedsButton'
 import WeekSelector from '@/components/layout/WeekSelector'
+import ModeSelector from '@/components/layout/ModeSelector'
 import { useWeeks } from '@/hooks/useWeeks'
 import { useWeekStore } from '@/store/weekStore'
 import { useCurrentWeek } from '@/hooks/useCurrentWeek'
@@ -158,6 +159,7 @@ function App() {
       menuItems={
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           <NavigationMenu />
+          <ModeSelector />
           <WeekSelector onWeekChange={undefined} showMetadata={false} />
           <RefreshMySportsFeedsButton onSuccess={handleImportSuccess} onError={handleImportError} />
           <ImportDataButton onSuccess={handleImportSuccess} onError={handleImportError} />

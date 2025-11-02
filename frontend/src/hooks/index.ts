@@ -15,7 +15,7 @@ export { useCurrentWeek } from './useCurrentWeek';
 export type { UseCurrentWeekReturn, CurrentWeekResponse } from './useCurrentWeek';
 
 export { useWeekMetadata } from './useWeekMetadata';
-export type { UseWeekMetadataReturn, WeekMetadataResponse } from './useWeekMetadata';
+export type { WeekMetadataResponse, UseWeekMetadataReturn } from './useWeekMetadata';
 
 export { useWeekSelection } from './useWeekSelection';
 export type { UseWeekSelectionReturn } from './useWeekSelection';
@@ -58,3 +58,6 @@ export type {
   CalibrationUpdateRequest,
   CalibrationBatchRequest,
 } from './useCalibration';
+
+export { useMode } from './useMode';
+export type { UseModeReturn } from './useMode';
