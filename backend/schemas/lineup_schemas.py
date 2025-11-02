@@ -6,6 +6,7 @@ Defines request and response models for lineup generation and management.
 from typing import Optional, List, Dict, Literal, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
+from backend.schemas.smart_score_schemas import WeightProfile, ScoreConfig
 
 
 class PlayerExposureLimits(BaseModel):
@@ -118,6 +119,14 @@ class LineupOptimizationRequest(BaseModel):
     selected_player_ids: Optional[List[int]] = Field(
         default=None,
         description="Optional list of player IDs to use for optimization. If provided, only these players will be considered."
+    )
+    weights: Optional[WeightProfile] = Field(
+        default=None,
+        description="Optional custom weight profile. If not provided, uses default profile."
+    )
+    config: Optional[ScoreConfig] = Field(
+        default=None,
+        description="Optional custom score config. If not provided, uses default config."
     )
     
     class Config:

@@ -70,12 +70,20 @@ async def generate_lineups(
         smart_score_service = SmartScoreService(db)
         weight_profile_service = WeightProfileService(db)
         
-        # Get default weight profile and config
-        default_profile = weight_profile_service.get_default_profile()
-        weights = default_profile.weights  # Already a WeightProfile object
-        config = default_profile.config  # Already a ScoreConfig object
+        # Use provided weights/config if available, otherwise use default profile
+        if request.weights is not None and request.config is not None:
+            # Use customized weights/config from frontend
+            weights = request.weights
+            config = request.config
+            logger.info("Using custom weights/config from request for Smart Score calculation")
+        else:
+            # Fall back to default profile if no custom weights provided
+            default_profile = weight_profile_service.get_default_profile()
+            weights = default_profile.weights  # Already a WeightProfile object
+            config = default_profile.config  # Already a ScoreConfig object
+            logger.info("Using default weight profile for Smart Score calculation")
         
-        # Calculate Smart Scores
+        # Calculate Smart Scores with the selected weights/config
         players_with_scores = smart_score_service.calculate_for_all_players(
             week_id=request.week_id,
             weights=weights,

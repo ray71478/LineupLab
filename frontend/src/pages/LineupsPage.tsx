@@ -67,7 +67,7 @@ export const LineupsPage: React.FC = () => {
   const currentWeek = getCurrentWeekData();
 
   const weekId = currentWeek?.id ?? null;
-  const { profiles, currentProfile } = useWeightProfile();
+  const { profiles, currentProfile, currentWeights, currentConfig } = useWeightProfile();
   const { generateLineups, isGenerating, saveLineups, isSaving } = useLineups(weekId);
 
   const [settings, setSettings] = useState<OptimizationSettings>(DEFAULT_SETTINGS);
@@ -106,6 +106,19 @@ export const LineupsPage: React.FC = () => {
       // Only include selected_player_ids if players were actually selected
       if (selectedPlayers && selectedPlayers.length > 0) {
         request.selected_player_ids = selectedPlayers.map((p) => p.player_id);
+      }
+
+      // Include customized weights and config so lineups use the same Smart Scores
+      // that were displayed in the Smart Score Engine screen
+      if (currentWeights && currentConfig) {
+        request.weights = currentWeights;
+        request.config = currentConfig;
+        console.log('Including custom weights/config in lineup generation:', {
+          weights: currentWeights,
+          config: currentConfig,
+        });
+      } else {
+        console.warn('No current weights/config available, will use default profile');
       }
 
       const lineups = await generateLineups(request);

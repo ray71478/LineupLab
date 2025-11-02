@@ -4,6 +4,8 @@
  * TypeScript types for lineup generation and management
  */
 
+import type { WeightProfile, ScoreConfig } from './smartScore.types';
+
 export interface PlayerExposureLimits {
   min?: number;
   max?: number;
@@ -48,6 +50,8 @@ export interface LineupOptimizationRequest {
   week_id: number;
   settings: OptimizationSettings;
   selected_player_ids?: number[];
+  weights?: WeightProfile;
+  config?: ScoreConfig;
 }
 
 export interface LineupOptimizationResponse {
