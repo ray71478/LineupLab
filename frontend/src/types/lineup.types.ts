@@ -23,7 +23,7 @@ export interface OptimizationSettings {
   max_players_per_game: number;
   player_exposure_limits?: Record<string, PlayerExposureLimits>;
   stacking_rules?: StackingRules;
-  smart_score_threshold?: number;
+  exclude_bottom_percentile?: number;
 }
 
 export interface LineupPlayer {

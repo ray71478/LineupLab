@@ -172,6 +172,25 @@ export const LineupConfigurationPanel: React.FC<LineupConfigurationPanelProps> =
 
           <Divider />
 
+          {/* Exclude Bottom Percentile */}
+          <TextField
+            label="Exclude Bottom % of Players"
+            type="number"
+            value={settings.exclude_bottom_percentile || 0}
+            onChange={(e) => handleChange('exclude_bottom_percentile', parseFloat(e.target.value) || 0)}
+            inputProps={{ min: 0, max: 100, step: 1 }}
+            size="small"
+            fullWidth
+            helperText="Exclude bottom X% by Smart Score (adapts to score distribution)"
+            sx={{
+              '& .MuiInputBase-input': {
+                fontSize: '0.875rem',
+              },
+            }}
+          />
+
+          <Divider />
+
           {/* Stacking Rules */}
           <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem', mb: 1 }}>
             Stacking Rules

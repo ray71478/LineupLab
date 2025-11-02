@@ -68,10 +68,11 @@ class OptimizationSettings(BaseModel):
         default_factory=StackingRules,
         description="Stacking rules configuration"
     )
-    smart_score_threshold: Optional[float] = Field(
-        default=5.0,
+    exclude_bottom_percentile: Optional[float] = Field(
+        default=0.0,
         ge=0,
-        description="Minimum Smart Score threshold (exclude players below). Default 5.0 filters out low-quality players."
+        le=100,
+        description="Exclude bottom X% of players by Smart Score (0-100). Adapts to actual score distribution. Default 0.0 = no filtering."
     )
     
     class Config:

@@ -284,12 +284,12 @@ class LineupOptimizerService:
             logger.warning("No players provided for optimization")
             return [], {}
 
-        # Filter players by Smart Score threshold if set
-        filtered_players = self._filter_by_threshold(players, settings.smart_score_threshold)
+        # Filter players by Smart Score percentile if set
+        filtered_players = self._filter_by_percentile(players, settings.exclude_bottom_percentile)
 
         logger.info(
-            f"After Smart Score threshold filtering: {len(filtered_players)} players "
-            f"(from {len(players)} total, threshold: {settings.smart_score_threshold})"
+            f"After Smart Score percentile filtering: {len(filtered_players)} players "
+            f"(from {len(players)} total, exclude bottom {settings.exclude_bottom_percentile}%)"
         )
 
         if len(filtered_players) < TOTAL_POSITIONS:
@@ -349,7 +349,7 @@ class LineupOptimizerService:
 
         if missing_positions:
             logger.error(
-                f"Position validation failed after Smart Score threshold ({settings.smart_score_threshold}). "
+                f"Position validation failed after Smart Score percentile filtering (exclude bottom {settings.exclude_bottom_percentile}%). "
                 f"Counts: {position_counts}. Missing: {', '.join(missing_positions)}"
             )
             return [], position_counts
@@ -864,17 +864,57 @@ class LineupOptimizerService:
 
         return lineups
 
-    def _filter_by_threshold(
+    def _filter_by_percentile(
         self,
         players: List[PlayerScoreResponse],
-        threshold: Optional[float]
+        exclude_bottom_percentile: Optional[float]
     ) -> List[PlayerScoreResponse]:
-        """Filter players by Smart Score threshold."""
-        if threshold is None or threshold <= 0:
+        """
+        Filter players by Smart Score percentile.
+        
+        Excludes bottom X% of players based on their Smart Score ranking.
+        This adapts to the actual score distribution, unlike a fixed threshold.
+        
+        Args:
+            players: List of players with Smart Scores
+            exclude_bottom_percentile: Percentile to exclude (0-100). 0 = no filtering.
+        
+        Returns:
+            Filtered list of players
+        """
+        if exclude_bottom_percentile is None or exclude_bottom_percentile <= 0:
             return players
-
-        filtered = [p for p in players if p.smart_score is not None and p.smart_score >= threshold]
-        logger.info(f"Filtered {len(players)} players to {len(filtered)} (threshold: {threshold})")
+        
+        # Filter out players with no Smart Score first
+        players_with_scores = [p for p in players if p.smart_score is not None]
+        if len(players_with_scores) == 0:
+            logger.warning("No players with Smart Scores to filter")
+            return players
+        
+        # Sort by Smart Score (descending)
+        sorted_players = sorted(players_with_scores, key=lambda p: p.smart_score or 0, reverse=True)
+        
+        # Calculate how many players to exclude from bottom
+        total_count = len(sorted_players)
+        exclude_count = int(total_count * (exclude_bottom_percentile / 100))
+        
+        # Take top (100 - exclude_bottom_percentile)%
+        if exclude_count >= total_count:
+            logger.warning(f"Exclude percentile ({exclude_bottom_percentile}%) would exclude all players, filtering none")
+            return players
+        
+        filtered = sorted_players[:-exclude_count] if exclude_count > 0 else sorted_players
+        
+        # Log score distribution info
+        if len(filtered) > 0:
+            min_score = min(p.smart_score for p in filtered if p.smart_score is not None)
+            max_score = max(p.smart_score for p in filtered if p.smart_score is not None)
+            logger.info(
+                f"Filtered {len(players)} players to {len(filtered)} "
+                f"(excluded bottom {exclude_bottom_percentile}%, "
+                f"score range: {min_score:.2f} - {max_score:.2f})"
+            )
+        
         return filtered
 
     def _prepare_players(

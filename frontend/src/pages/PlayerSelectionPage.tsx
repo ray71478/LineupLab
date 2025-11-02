@@ -207,7 +207,7 @@ export const PlayerSelectionPage: React.FC = () => {
                 fontSize: '0.875rem',
               },
             }}
-            helperText="Select all players >= this threshold"
+            helperText="Filter players for selection (not used by optimizer)"
           />
 
           <Button
