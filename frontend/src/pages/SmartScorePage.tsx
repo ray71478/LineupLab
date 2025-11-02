@@ -6,6 +6,7 @@
  * - Player table with Smart Scores
  * - Recalculation workflow
  * - Profile management
+ * - Calibration status indicator
  *
  * Design: Factory.ai inspired (black, white, orange accents)
  *
@@ -32,6 +33,7 @@ import { useNavigate } from 'react-router-dom';
 import { useWeekStore } from '../store/weekStore';
 import { useSmartScore, useWeightProfile, useScoreSnapshot } from '../hooks';
 import type { PlayerScoreResponse, WeightProfile, ScoreConfig } from '../types/smartScore.types';
+import { CalibrationStatusChip, CalibrationAdmin } from '../components/calibration';
 
 // Placeholder components - will be created next
 const WeightAdjustmentPanel = React.lazy(() => import('../components/smart-score/WeightAdjustmentPanel').then(m => ({ default: m.WeightAdjustmentPanel })));
@@ -83,6 +85,9 @@ export const SmartScorePage: React.FC = () => {
   const [isCalculatingInitial, setIsCalculatingInitial] = useState(false);
   const [defaultProfileLoadAttempted, setDefaultProfileLoadAttempted] = useState(false);
 
+  // Calibration admin modal state
+  const [showCalibrationModal, setShowCalibrationModal] = useState(false);
+
   // Snapshot management
   const {
     createSnapshot,
@@ -105,7 +110,7 @@ export const SmartScorePage: React.FC = () => {
       previousProfileIdNotNull: previousProfileId !== null,
       isInitialized,
     };
-    
+
     console.log('Profile change effect:', {
       weekId,
       currentProfileId: currentProfile?.id,
@@ -131,7 +136,7 @@ export const SmartScorePage: React.FC = () => {
       isInitialized
     ) {
       console.log('✅ All conditions met! Triggering profile recalculation for profile:', currentProfile.name);
-      
+
       // Store previous scores before recalculation
       if (localPlayers.length > 0) {
         createSnapshot(localPlayers);
@@ -163,7 +168,7 @@ export const SmartScorePage: React.FC = () => {
       if (currentProfile?.id === previousProfileId) missingConditions.push('profileChanged');
       if (previousProfileId === null) missingConditions.push('previousProfileIdNotNull');
       if (!isInitialized) missingConditions.push('isInitialized');
-      
+
       if (missingConditions.length > 0) {
         console.log('❌ Conditions not met for auto-recalculation. Missing:', missingConditions);
       }
@@ -201,7 +206,7 @@ export const SmartScorePage: React.FC = () => {
           if (localPlayers.length > 0) {
             createSnapshot(localPlayers);
           }
-          
+
           // Recalculate with updated opponent data from refresh
           const calculatedPlayers = await calculateScores(weekId, currentWeights, currentConfig);
           setLocalPlayers(calculatedPlayers);
@@ -249,13 +254,13 @@ export const SmartScorePage: React.FC = () => {
     //
     // The key: Wait for the default profile load attempt to complete before calculating.
     // This ensures we use the loaded default profile weights, not the hardcoded DEFAULT_WEIGHTS.
-    const shouldCalculate = 
+    const shouldCalculate =
       weekId &&
       currentWeights &&
       defaultProfileLoadAttempted &&
       !isInitialized &&
       !isCalculatingInitial;
-    
+
     if (shouldCalculate) {
       setIsCalculatingInitial(true);
       const initialCalculation = async () => {
@@ -293,13 +298,18 @@ export const SmartScorePage: React.FC = () => {
       // Use provided weights/config if available, otherwise use currentProfile's, otherwise fall back to hook state
       const weightsToUse = weights || currentProfile?.weights || currentWeights;
       const configToUse = config || currentProfile?.config || currentConfig;
-      
+
       if (!weightsToUse || !configToUse) {
         console.error('handleApply: Missing weights or config', { weightsToUse, configToUse });
         return;
       }
-      
+
       console.log('handleApply: Using weights:', weightsToUse, 'from profile:', currentProfile?.name, 'provided:', !!weights);
+
+      // Update hook state with applied weights/config so they persist across navigation
+      // This ensures both pages use the same values
+      updateWeights(weightsToUse);
+      updateConfig(configToUse);
 
       // Calculate new scores
       const calculatedPlayers = await calculateScores(weekId, weightsToUse, configToUse);
@@ -346,6 +356,13 @@ export const SmartScorePage: React.FC = () => {
     updateConfig(config);
   };
 
+  const handleCalibrationClick = () => {
+    setShowCalibrationModal(true);
+  };
+
+  const handleCloseCalibrationModal = () => {
+    setShowCalibrationModal(false);
+  };
 
   const isLoading = scoresLoading || profilesLoading || isCalculating;
   const error = scoresError || profilesError;
@@ -364,7 +381,7 @@ export const SmartScorePage: React.FC = () => {
 
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 2, md: 4 } }}>
-      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
             Smart Score Engine
@@ -373,18 +390,25 @@ export const SmartScorePage: React.FC = () => {
             Week {currentWeek.week_number} - {currentWeek.season}
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          onClick={() => navigate('/player-selection')}
-          sx={{
-            backgroundColor: '#ff6b35',
-            '&:hover': {
-              backgroundColor: '#e55a25',
-            },
-          }}
-        >
-          Select Players for Lineups
-        </Button>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <CalibrationStatusChip
+            weekId={weekId}
+            onClick={handleCalibrationClick}
+            compact={isMobile}
+          />
+          <Button
+            variant="contained"
+            onClick={() => navigate('/player-selection')}
+            sx={{
+              backgroundColor: '#ff6b35',
+              '&:hover': {
+                backgroundColor: '#e55a25',
+              },
+            }}
+          >
+            {isMobile ? 'Select' : 'Select Players for Lineups'}
+          </Button>
+        </Stack>
       </Box>
 
       {error && (
@@ -449,6 +473,13 @@ export const SmartScorePage: React.FC = () => {
           />
         </React.Suspense>
       )}
+
+      {/* Calibration Admin Modal */}
+      <CalibrationAdmin
+        open={showCalibrationModal}
+        onClose={handleCloseCalibrationModal}
+        weekId={weekId}
+      />
     </Container>
   );
 };

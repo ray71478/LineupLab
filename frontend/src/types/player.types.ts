@@ -19,6 +19,15 @@ export interface PlayerResponse {
   source: string;
   status: 'matched' | 'unmatched';
   uploaded_at: string;
+
+  // Calibrated projection fields for dual-value display
+  projection_floor_original?: number | null;
+  projection_floor_calibrated?: number | null;
+  projection_median_original?: number | null;
+  projection_median_calibrated?: number | null;
+  projection_ceiling_original?: number | null;
+  projection_ceiling_calibrated?: number | null;
+  calibration_applied?: boolean;
 }
 
 export interface UnmatchedPlayerResponse {

@@ -55,6 +55,18 @@ const WEIGHT_LABELS = {
   W8: 'Matchup Adjustment',
 };
 
+// Tooltips explaining what each weight does
+const WEIGHT_TOOLTIPS = {
+  W1: 'Base projection value from ETR or LineStar. Higher weight = more emphasis on projected points.',
+  W2: 'Difference between ceiling and floor projections. Higher weight = prefer players with upside potential.',
+  W3: 'Penalty for high ownership players. Higher weight = avoid chalky plays for tournament differentiation.',
+  W4: 'Points per dollar (value). Higher weight = prefer cheaper players with good value.',
+  W5: 'Recent performance trend. Higher weight = favor hot players over cold players.',
+  W6: 'Regression penalty for outlier projections. Higher weight = fade unsustainable performances.',
+  W7: 'Vegas implied team total and game environment. Higher weight = target high-scoring games.',
+  W8: 'Matchup difficulty rating. Currently disabled pending data configuration.',
+};
+
 // Disabled weights that have no effect
 const DISABLED_WEIGHTS = {
   W8: 'Disabled - Pending data configuration',
@@ -280,8 +292,11 @@ export const WeightAdjustmentPanel: React.FC<WeightAdjustmentPanelProps> = ({
           return (
             <Tooltip
               key={key}
-              title={isDisabled ? disabledReason : ''}
+              title={WEIGHT_TOOLTIPS[key]}
               placement="right"
+              arrow
+              enterDelay={300}
+              enterNextDelay={300}
             >
               <Box
                 sx={{

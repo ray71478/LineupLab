@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from backend.exceptions import DataImportError
 from backend.services.player_matcher import PlayerMatcher
 from backend.services.validation_service import ValidationService
+from backend.services.calibration_service import CalibrationService
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,9 @@ class DataImporter:
         "Flr": "floor",
         "Own": "ownership",
         "Notes": "notes",
+        "ID": "draftkings_id",
+        "Game Info": "game_info",
+        "ITT": "implied_team_total",
     }
 
     COMPREHENSIVE_STATS_COLUMNS = {
@@ -88,6 +92,7 @@ class DataImporter:
         self.session = session
         self.validator = ValidationService()
         self.matcher = PlayerMatcher(session)
+        self.calibration_service = CalibrationService(session)
 
     async def parse_xlsx(
         self, file: UploadFile, source: str
@@ -120,8 +125,8 @@ class DataImporter:
                 df = pd.read_excel(file_obj, sheet_name=0, header=0)
 
             elif source.lower() == "draftkings":
-                # DraftKings: FE sheet, skip row 1, row 2 as header
-                df = pd.read_excel(file_obj, sheet_name="FE", header=1, skiprows=[0])
+                # DraftKings: FE sheet, row 1 as header (row 0 contains numeric values)
+                df = pd.read_excel(file_obj, sheet_name="FE", header=1)
 
             elif source.lower() == "comprehensive_stats":
                 # Comprehensive Stats: Points sheet, row 1 as header
@@ -181,6 +186,8 @@ class DataImporter:
                     "Ceil": "float",
                     "Flr": "float",
                     "Own": "float",
+                    "ID": "int",
+                    "ITT": "float",
                 }
 
             elif source.lower() == "comprehensive_stats":
@@ -209,6 +216,9 @@ class DataImporter:
             # For comprehensive stats, only require core columns (optional columns will be handled gracefully)
             if source.lower() == "comprehensive_stats":
                 required_columns = ["Player", "Tm", "Pos", "Wk"]
+            elif source.lower() == "draftkings":
+                # DraftKings: Core columns required, Game Info is optional (used for opponent extraction)
+                required_columns = ["Name", "Pos", "T", "S", "Proj", "Ceil", "Flr", "Own"]
             else:
                 required_columns = list(columns.keys())
 
@@ -283,6 +293,52 @@ class DataImporter:
                         player["name"], player["team"], player["position"]
                     )
 
+                    # DraftKings-specific processing: extract opponent and game_time from game_info
+                    if source.lower() == "draftkings":
+                        game_info = player.get("game_info")
+                        if game_info and isinstance(game_info, str):
+                            # Parse Game Info: 'CAR@GB  01:00PM' -> Away: CAR, Home: GB
+                            parts = game_info.split('@')
+                            if len(parts) == 2:
+                                away_team = parts[0].strip()
+                                rest = parts[1].split()
+                                home_team = rest[0].strip() if rest else None
+                                game_time = rest[1] if len(rest) > 1 else None
+
+                                # Determine opponent based on player's team
+                                player_team = player.get("team")
+                                if player_team and home_team and away_team:
+                                    if player_team == home_team:
+                                        player["opponent"] = away_team
+                                    elif player_team == away_team:
+                                        player["opponent"] = home_team
+                                    else:
+                                        player["opponent"] = None
+                                    player["game_time"] = game_time
+                                else:
+                                    player["opponent"] = None
+                                    player["game_time"] = None
+                            else:
+                                player["opponent"] = None
+                                player["game_time"] = None
+                        else:
+                            player["opponent"] = None
+                            player["game_time"] = None
+
+                        # Ensure draftkings_id is integer if present
+                        if player.get("draftkings_id") is not None:
+                            try:
+                                player["draftkings_id"] = int(player["draftkings_id"])
+                            except (ValueError, TypeError):
+                                player["draftkings_id"] = None
+
+                        # Ensure implied_team_total is float if present
+                        if player.get("implied_team_total") is not None:
+                            try:
+                                player["implied_team_total"] = float(player["implied_team_total"])
+                            except (ValueError, TypeError):
+                                player["implied_team_total"] = None
+
                     # Categorize opponent rank (LineStar only)
                     if source.lower() == "linestar":
                         opp_rank = player.get("opponent_rank")
@@ -303,7 +359,7 @@ class DataImporter:
 
                     # Validate business rules
                     self.validator.validate_player_data(player)
-                    
+
                     # Append player to list
                     players.append(player)
 
@@ -334,6 +390,7 @@ class DataImporter:
         """
         Bulk insert players into player_pools table.
 
+        Applies calibration before insertion if active calibration exists for the week.
         Optionally deletes existing data before insertion based on source type:
         - LineStar: Delete only LineStar data for this week
         - DraftKings: Delete ALL data for this week (replaces LineStar)
@@ -352,6 +409,24 @@ class DataImporter:
             DataImportError: If insertion fails
         """
         try:
+            # Apply calibration to players before insertion
+            try:
+                players = self.calibration_service.apply_calibration(
+                    players, week_id, self.session
+                )
+                logger.info(f"Applied calibration to players for week {week_id}")
+            except Exception as e:
+                logger.error(f"Calibration application failed: {str(e)}")
+                # Continue with import without calibration - set default values
+                for player in players:
+                    player['projection_floor_original'] = player.get('floor')
+                    player['projection_median_original'] = player.get('projection')
+                    player['projection_ceiling_original'] = player.get('ceiling')
+                    player['projection_floor_calibrated'] = player.get('floor')
+                    player['projection_median_calibrated'] = player.get('projection')
+                    player['projection_ceiling_calibrated'] = player.get('ceiling')
+                    player['calibration_applied'] = False
+
             # Delete existing data if requested
             if delete_all_sources:
                 # DraftKings: Delete ALL players for this week
@@ -373,7 +448,7 @@ class DataImporter:
                     f"Deleted existing {source} players for week {week_id}"
                 )
 
-            # Prepare records for insertion
+            # Prepare records for insertion with calibrated columns
             insert_records = [
                 {
                     "week_id": week_id,
@@ -390,6 +465,13 @@ class DataImporter:
                     "source": source,
                     "projection_source": p.get("projection_source"),
                     "opponent_rank_category": p.get("opponent_rank_category"),
+                    "projection_floor_original": p.get("projection_floor_original"),
+                    "projection_floor_calibrated": p.get("projection_floor_calibrated"),
+                    "projection_median_original": p.get("projection_median_original"),
+                    "projection_median_calibrated": p.get("projection_median_calibrated"),
+                    "projection_ceiling_original": p.get("projection_ceiling_original"),
+                    "projection_ceiling_calibrated": p.get("projection_ceiling_calibrated"),
+                    "calibration_applied": p.get("calibration_applied", False),
                 }
                 for p in players
             ]
@@ -398,8 +480,19 @@ class DataImporter:
             if insert_records:
                 stmt = text("""
                     INSERT INTO player_pools
-                    (week_id, player_key, name, team, position, salary, projection, ownership, ceiling, floor, notes, source, projection_source, opponent_rank_category)
-                    VALUES (:week_id, :player_key, :name, :team, :position, :salary, :projection, :ownership, :ceiling, :floor, :notes, :source, :projection_source, :opponent_rank_category)
+                    (week_id, player_key, name, team, position, salary, projection, ownership,
+                     ceiling, floor, notes, source, projection_source, opponent_rank_category,
+                     projection_floor_original, projection_floor_calibrated,
+                     projection_median_original, projection_median_calibrated,
+                     projection_ceiling_original, projection_ceiling_calibrated,
+                     calibration_applied)
+                    VALUES (:week_id, :player_key, :name, :team, :position, :salary,
+                            :projection, :ownership, :ceiling, :floor, :notes, :source,
+                            :projection_source, :opponent_rank_category,
+                            :projection_floor_original, :projection_floor_calibrated,
+                            :projection_median_original, :projection_median_calibrated,
+                            :projection_ceiling_original, :projection_ceiling_calibrated,
+                            :calibration_applied)
                 """)
 
                 for record in insert_records:

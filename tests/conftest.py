@@ -59,7 +59,7 @@ def db_engine():
                 )
             """))
 
-            # Create player_pools table
+            # Create player_pools table with calibration columns
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS player_pools (
                     id INTEGER PRIMARY KEY,
@@ -67,7 +67,7 @@ def db_engine():
                     player_key VARCHAR(255) NOT NULL,
                     name VARCHAR(255) NOT NULL,
                     team VARCHAR(10) NOT NULL,
-                    position VARCHAR(10) NOT NULL CHECK (position IN ('QB', 'RB', 'WR', 'TE', 'DST')),
+                    position VARCHAR(10) NOT NULL CHECK (position IN ('QB', 'RB', 'WR', 'TE', 'DST', 'K')),
                     salary INTEGER NOT NULL CHECK (salary BETWEEN 3000 AND 10000),
                     projection FLOAT CHECK (projection >= 0),
                     ownership FLOAT CHECK (ownership BETWEEN 0 AND 1),
@@ -76,12 +76,36 @@ def db_engine():
                     source VARCHAR(50) NOT NULL,
                     projection_source VARCHAR(50),
                     opponent_rank_category VARCHAR(20),
+                    injury_status VARCHAR(50),
+                    projection_floor_original FLOAT,
+                    projection_floor_calibrated FLOAT,
+                    projection_median_original FLOAT,
+                    projection_median_calibrated FLOAT,
+                    projection_ceiling_original FLOAT,
+                    projection_ceiling_calibrated FLOAT,
+                    calibration_applied BOOLEAN DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(week_id, player_key)
                 )
             """))
-            
+
+            # Create projection_calibration table
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS projection_calibration (
+                    id INTEGER PRIMARY KEY,
+                    week_id INTEGER NOT NULL REFERENCES weeks(id) ON DELETE CASCADE,
+                    position VARCHAR(10) NOT NULL CHECK (position IN ('QB', 'RB', 'WR', 'TE', 'K', 'DST')),
+                    floor_adjustment_percent FLOAT NOT NULL CHECK (floor_adjustment_percent BETWEEN -50 AND 50),
+                    median_adjustment_percent FLOAT NOT NULL CHECK (median_adjustment_percent BETWEEN -50 AND 50),
+                    ceiling_adjustment_percent FLOAT NOT NULL CHECK (ceiling_adjustment_percent BETWEEN -50 AND 50),
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(week_id, position)
+                )
+            """))
+
             # Create weight_profiles table
             conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS weight_profiles (
@@ -264,6 +288,7 @@ def db_engine():
                 "player_aliases",
                 "historical_stats_backup",
                 "historical_stats",
+                "projection_calibration",
                 "player_pools",
                 "weeks",
             ]
@@ -550,4 +575,3 @@ def draftkings_sample() -> BytesIO:
 def comprehensive_stats_sample() -> BytesIO:
     """Fixture providing Comprehensive Stats sample file."""
     return create_comprehensive_stats_xlsx()
-

@@ -27,6 +27,15 @@ class PlayerResponse(BaseModel):
     status: str = Field(..., description="Match status (matched or unmatched)")
     uploaded_at: datetime = Field(..., description="Upload timestamp")
 
+    # Calibrated projection fields for dual-value display
+    projection_floor_original: Optional[float] = Field(None, description="Original floor projection")
+    projection_floor_calibrated: Optional[float] = Field(None, description="Calibrated floor projection")
+    projection_median_original: Optional[float] = Field(None, description="Original median projection")
+    projection_median_calibrated: Optional[float] = Field(None, description="Calibrated median projection")
+    projection_ceiling_original: Optional[float] = Field(None, description="Original ceiling projection")
+    projection_ceiling_calibrated: Optional[float] = Field(None, description="Calibrated ceiling projection")
+    calibration_applied: bool = Field(False, description="Whether calibration was applied to this player")
+
     class Config:
         from_attributes = True
 

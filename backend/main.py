@@ -65,6 +65,7 @@ import backend.routers.smart_score_router as smart_score_router_module
 import backend.routers.insights_router as insights_router_module
 import backend.routers.refresh_router as refresh_router_module
 import backend.routers.lineups_router as lineups_router_module
+import backend.routers.calibration_router as calibration_router_module
 
 # Override get_db in each router module
 import_router_module.get_db = get_db
@@ -76,8 +77,9 @@ smart_score_router_module.get_db = get_db
 insights_router_module.get_db = get_db
 refresh_router_module.get_db = get_db
 lineups_router_module.get_db = get_db
+calibration_router_module.get_db = get_db
 
-from backend.routers import import_router, import_history_router, unmatched_players_router, week_router, players_router, smart_score_router, insights_router, refresh_router, lineups_router
+from backend.routers import import_router, import_history_router, unmatched_players_router, week_router, players_router, smart_score_router, insights_router, refresh_router, lineups_router, calibration_router
 
 # Create FastAPI app
 app = FastAPI(
@@ -157,6 +159,7 @@ app.include_router(smart_score_router.router)
 app.include_router(insights_router.router)
 app.include_router(refresh_router.router)
 app.include_router(lineups_router.router)
+app.include_router(calibration_router.router)
 
 logger.info("Cortex backend API initialized successfully")
 logger.info(f"Database: {DATABASE_URL}")
@@ -170,6 +173,7 @@ logger.info("  - /api/smart-score (smart_score_router)")
 logger.info("  - /api/insights (insights_router)")
 logger.info("  - /api/refresh (refresh_router)")
 logger.info("  - /api/lineups (lineups_router)")
+logger.info("  - /api/calibration (calibration_router)")
 
 
 if __name__ == "__main__":

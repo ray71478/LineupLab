@@ -80,6 +80,7 @@ class PlayerManagementService:
             offset = max(offset, 0)
 
             # Build base query with specific columns (no SELECT *)
+            # Include calibrated projection fields with COALESCE fallback
             sql = """
                 SELECT
                     p.id,
@@ -88,17 +89,24 @@ class PlayerManagementService:
                     p.team,
                     p.position,
                     p.salary,
-                    p.projection,
+                    COALESCE(p.projection_median_calibrated, p.projection_median_original, p.projection) as projection,
                     p.ownership,
-                    p.ceiling,
-                    p.floor,
+                    COALESCE(p.projection_ceiling_calibrated, p.projection_ceiling_original, p.ceiling) as ceiling,
+                    COALESCE(p.projection_floor_calibrated, p.projection_floor_original, p.floor) as floor,
                     p.notes,
                     p.source,
                     CASE
                         WHEN u.id IS NULL THEN 'matched'
                         ELSE 'unmatched'
                     END as status,
-                    p.uploaded_at
+                    p.uploaded_at,
+                    p.projection_floor_original,
+                    p.projection_floor_calibrated,
+                    p.projection_median_original,
+                    p.projection_median_calibrated,
+                    p.projection_ceiling_original,
+                    p.projection_ceiling_calibrated,
+                    COALESCE(p.calibration_applied, false) as calibration_applied
                 FROM player_pools p
                 LEFT JOIN unmatched_players u ON p.player_key = u.suggested_player_key
                 WHERE p.week_id = :week_id
@@ -181,6 +189,13 @@ class PlayerManagementService:
                     source=row[11],
                     status=row[12],
                     uploaded_at=row[13],
+                    projection_floor_original=row[14],
+                    projection_floor_calibrated=row[15],
+                    projection_median_original=row[16],
+                    projection_median_calibrated=row[17],
+                    projection_ceiling_original=row[18],
+                    projection_ceiling_calibrated=row[19],
+                    calibration_applied=row[20],
                 )
                 players.append(player)
 
@@ -477,6 +492,7 @@ class PlayerManagementService:
                 return self._suggestion_cache[cache_key][:limit]
 
             # Get all players with matching team and position (uses index)
+            # Include calibrated projection fields
             sql = """
                 SELECT
                     id,
@@ -491,7 +507,14 @@ class PlayerManagementService:
                     floor,
                     notes,
                     source,
-                    uploaded_at
+                    uploaded_at,
+                    projection_floor_original,
+                    projection_floor_calibrated,
+                    projection_median_original,
+                    projection_median_calibrated,
+                    projection_ceiling_original,
+                    projection_ceiling_calibrated,
+                    COALESCE(calibration_applied, false) as calibration_applied
                 FROM player_pools
                 WHERE team = :team
                   AND position = :position
@@ -550,6 +573,13 @@ class PlayerManagementService:
                                 source=row[11],
                                 status="matched",
                                 uploaded_at=row[12],
+                                projection_floor_original=row[13],
+                                projection_floor_calibrated=row[14],
+                                projection_median_original=row[15],
+                                projection_median_calibrated=row[16],
+                                projection_ceiling_original=row[17],
+                                projection_ceiling_calibrated=row[18],
+                                calibration_applied=row[19],
                             )
                             suggestions.append(suggestion)
                             break

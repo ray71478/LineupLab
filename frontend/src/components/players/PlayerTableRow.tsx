@@ -23,6 +23,7 @@ import {
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import PlayerStatusBadge from './PlayerStatusBadge';
+import ProjectionDisplay from '../player/ProjectionDisplay';
 
 export interface PlayerData {
   id: number;
@@ -39,6 +40,14 @@ export interface PlayerData {
   status: 'matched' | 'unmatched';
   ceiling?: number;
   floor?: number;
+  // Calibrated projection fields
+  projection_floor_original?: number | null;
+  projection_floor_calibrated?: number | null;
+  projection_median_original?: number | null;
+  projection_median_calibrated?: number | null;
+  projection_ceiling_original?: number | null;
+  projection_ceiling_calibrated?: number | null;
+  calibration_applied?: boolean;
 }
 
 export interface PlayerTableRowProps {
@@ -55,6 +64,7 @@ export const PlayerTableRow: React.FC<PlayerTableRowProps> = ({
   isMobile = false,
 }) => {
   const isUnmatched = player.status === 'unmatched';
+  const calibrationApplied = player.calibration_applied || false;
 
   return (
     <>
@@ -231,63 +241,29 @@ export const PlayerTableRow: React.FC<PlayerTableRowProps> = ({
                     gap: isMobile ? '12px' : '16px',
                   }}
                 >
-                  {/* Ceiling */}
-                  {player.ceiling !== undefined && (
-                    <Box>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          color: '#9ca3af',
-                          fontSize: isMobile ? '0.7rem' : '0.75rem',
-                          fontWeight: 600,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px',
-                        }}
-                      >
-                        Ceiling
-                      </Typography>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          color: '#ffffff',
-                          fontSize: isMobile ? '0.95rem' : '1.1rem',
-                          fontWeight: 600,
-                          marginTop: '4px',
-                        }}
-                      >
-                        {player.ceiling.toFixed(2)}
-                      </Typography>
-                    </Box>
-                  )}
+                  {/* Floor - Use ProjectionDisplay component */}
+                  <ProjectionDisplay
+                    label="Floor"
+                    originalValue={player.projection_floor_original ?? player.floor}
+                    calibratedValue={player.projection_floor_calibrated ?? player.floor}
+                    calibrationApplied={calibrationApplied}
+                  />
 
-                  {/* Floor */}
-                  {player.floor !== undefined && (
-                    <Box>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          color: '#9ca3af',
-                          fontSize: isMobile ? '0.7rem' : '0.75rem',
-                          fontWeight: 600,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px',
-                        }}
-                      >
-                        Floor
-                      </Typography>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          color: '#ffffff',
-                          fontSize: isMobile ? '0.95rem' : '1.1rem',
-                          fontWeight: 600,
-                          marginTop: '4px',
-                        }}
-                      >
-                        {player.floor.toFixed(2)}
-                      </Typography>
-                    </Box>
-                  )}
+                  {/* Median Projection - Use ProjectionDisplay component */}
+                  <ProjectionDisplay
+                    label="Median"
+                    originalValue={player.projection_median_original ?? player.projection}
+                    calibratedValue={player.projection_median_calibrated ?? player.projection}
+                    calibrationApplied={calibrationApplied}
+                  />
+
+                  {/* Ceiling - Use ProjectionDisplay component */}
+                  <ProjectionDisplay
+                    label="Ceiling"
+                    originalValue={player.projection_ceiling_original ?? player.ceiling}
+                    calibratedValue={player.projection_ceiling_calibrated ?? player.ceiling}
+                    calibrationApplied={calibrationApplied}
+                  />
 
                   {/* Source */}
                   {player.source && (

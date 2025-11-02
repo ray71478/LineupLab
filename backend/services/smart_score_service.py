@@ -11,6 +11,7 @@ Provides methods for:
 - Real injury data integration from MySportsFeeds
 - Real Vegas ITT data integration
 - Real defensive ranking data integration
+- Projection calibration integration (uses calibrated projections when available)
 
 Smart Score Formula:
   Smart Score = (projection × W1) +
@@ -825,6 +826,7 @@ class SmartScoreService:
 
         Filters out unavailable players (OUT, DOUBTFUL) based on real injury data.
         Uses caching to avoid redundant calculations for same week/weights/config.
+        Uses calibrated projections when calibration_applied = true, otherwise uses original projections.
 
         Args:
             week_id: Week ID to calculate scores for
@@ -847,7 +849,8 @@ class SmartScoreService:
 
         logger.debug(f"Cache MISS for week {week_id}, calculating...")
 
-        # Fetch all players for the week including injury status
+        # Fetch all players for the week including injury status and calibrated projections
+        # Uses COALESCE to fall back to original projections if calibrated values are NULL
         players_query = text("""
             SELECT
                 id,
@@ -856,13 +859,14 @@ class SmartScoreService:
                 team,
                 position,
                 salary,
-                projection,
+                COALESCE(projection_median_calibrated, projection_median_original, projection) as projection,
                 ownership,
-                ceiling,
-                floor,
+                COALESCE(projection_ceiling_calibrated, projection_ceiling_original, ceiling) as ceiling,
+                COALESCE(projection_floor_calibrated, projection_floor_original, floor) as floor,
                 projection_source,
                 opponent_rank_category,
-                COALESCE(injury_status, NULL) as injury_status
+                COALESCE(injury_status, NULL) as injury_status,
+                calibration_applied
             FROM player_pools
             WHERE week_id = :week_id
             ORDER BY position, name
@@ -1003,7 +1007,7 @@ class SmartScoreService:
                                     logger.debug(f"Found opponent {opponent} for {player_data.team} via ESPN API (primary source)")
                         except Exception as e:
                             logger.debug(f"Could not fetch opponent from ESPN (primary source): {e}")
-                    
+
                     # Get ITT and O/U from vegas_lines (always needed, regardless of opponent source)
                     vegas_result = self.session.execute(
                         text("""
@@ -1017,13 +1021,13 @@ class SmartScoreService:
 
                     if vegas_result:
                         vegas_opponent, implied_team_total, over_under = vegas_result
-                        
+
                         # FALLBACK: Use opponent from vegas_lines only if ESPN didn't provide one
                         if (not opponent or not isinstance(opponent, str) or not opponent.strip()):
                             if vegas_opponent and isinstance(vegas_opponent, str) and vegas_opponent.strip():
                                 opponent = vegas_opponent
                                 logger.debug(f"Found opponent {opponent} for {player_data.team} via vegas_lines (fallback)")
-                    
+
                     # If we have opponent data, calculate historical matchup average
                     # Normalize opponent to uppercase and check it's not empty
                     opponent_for_display = None

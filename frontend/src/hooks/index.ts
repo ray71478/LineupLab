@@ -43,3 +43,18 @@ export type { UseScoreSnapshotReturn } from './useScoreSnapshot';
 
 export { useLineups } from './useLineups';
 export type { UseLineupsReturn } from './useLineups';
+
+export {
+  useCalibrationStatus,
+  useCalibrations,
+  useUpdateCalibration,
+  useBatchUpdateCalibrations,
+  useResetCalibrations,
+} from './useCalibration';
+export type {
+  CalibrationStatus,
+  CalibrationFactor,
+  CalibrationListResponse,
+  CalibrationUpdateRequest,
+  CalibrationBatchRequest,
+} from './useCalibration';
