@@ -23,8 +23,9 @@ class ValidationService:
     # File-level constants
     MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
-    # Valid positions for DFS (QB, RB, WR, TE, DST)
-    VALID_POSITIONS = {"QB", "RB", "WR", "TE", "DST"}
+    # Valid positions for DFS (QB, RB, WR, TE, K, DST)
+    # K (kicker) is required for Showdown mode
+    VALID_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 
     # Salary range (in cents: 2000 = $20.00, 15000 = $150.00 in DraftKings)
     MIN_SALARY = 2000
