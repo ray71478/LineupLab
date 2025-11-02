@@ -51,6 +51,8 @@ export interface PlayerScoreResponse {
   salary: number;
   projection?: number | null;
   ownership?: number | null;
+  ceiling?: number | null;
+  floor?: number | null;
   smart_score?: number | null;
   projection_source?: string | null;
   opponent_rank_category?: string | null;

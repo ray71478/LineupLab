@@ -24,6 +24,7 @@ export interface OptimizationSettings {
   player_exposure_limits?: Record<string, PlayerExposureLimits>;
   stacking_rules?: StackingRules;
   exclude_bottom_percentile?: number;
+  max_ownership?: number;
 }
 
 export interface LineupPlayer {

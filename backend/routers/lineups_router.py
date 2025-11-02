@@ -120,7 +120,7 @@ async def generate_lineups(
                 f"Filtered {before_count} → {len(players_with_scores)} players "
                 f"({len(selected_ids_set) - len(players_with_scores)} selected IDs not found in player pool)"
             )
-
+            
             # Log position breakdown and score distribution after filtering
             pos_counts = {}
             score_ranges = {'0.0': 0, '0.1-5.0': 0, '5.1-10.0': 0, '10.1-20.0': 0, '20.1-30.0': 0, '30+': 0}
@@ -143,6 +143,10 @@ async def generate_lineups(
             logger.info(f"Position breakdown after filter: {pos_counts}")
             logger.info(f"Smart Score distribution: {score_ranges}")
             logger.info(f"Players with score 0.0: {score_ranges['0.0']} (these will be filtered out by optimizer)")
+        else:
+            logger.info(
+                f"No player selection provided - using ALL {len(players_with_scores)} players from player pool"
+            )
         
         # Generate lineups
         optimizer_service = LineupOptimizerService(db)

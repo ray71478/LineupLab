@@ -50,6 +50,7 @@ const DEFAULT_SETTINGS: OptimizationSettings = {
   strategy_mode: 'Tournament',  // Default to Tournament mode (ceiling + ownership leverage)
   max_players_per_team: 4,
   max_players_per_game: 5,
+  max_ownership: 0.15,  // Default 15% max ownership
   stacking_rules: {
     qb_wr_stack_enabled: true,  // Default ON for tournaments
     bring_back_enabled: true,    // Default ON for tournaments

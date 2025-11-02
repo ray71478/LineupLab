@@ -90,6 +90,8 @@ class PlayerScoreResponse(BaseModel):
     salary: int = Field(..., description="Salary")
     projection: Optional[float] = Field(None, description="Projection")
     ownership: Optional[float] = Field(None, description="Ownership (0-1)")
+    ceiling: Optional[float] = Field(None, description="Ceiling projection")
+    floor: Optional[float] = Field(None, description="Floor projection")
     smart_score: Optional[float] = Field(None, description="Calculated Smart Score")
     projection_source: Optional[str] = Field(None, description="Projection source")
     opponent_rank_category: Optional[str] = Field(None, description="Opponent rank category")

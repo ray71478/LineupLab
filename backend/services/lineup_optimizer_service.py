@@ -9,6 +9,7 @@ Uses PuLP linear programming to solve constrained optimization problem:
 """
 
 import logging
+import time
 from typing import List, Dict, Optional, Set, Tuple
 from dataclasses import dataclass
 from collections import defaultdict
@@ -38,94 +39,99 @@ POSITION_REQUIREMENTS = {
 }
 TOTAL_POSITIONS = sum(POSITION_REQUIREMENTS.values())  # 9
 
-# Elite Appearance Targets based on Milly Winner research (8-week analysis)
+# Elite Appearance Targets - Updated to be less restrictive
 # Structure: Dict[position, List[Tuple[min_appearances, max_appearances]]] for ranks 1-15
 # Index 0 = rank 1 (top player), index 1 = rank 2, etc.
+#
+# Updated constraints:
+# - Max appearance capped at 5 (half of 10 lineups) for top players
+# - Reduced minimums to allow more flexibility
+# - All based on Smart Score ranking (not projection)
 ELITE_APPEARANCE_TARGETS = {
     'RB': [
-        (10, 10),  # Rank 1: Must appear in all 10 lineups
-        (8, 10),   # Rank 2
-        (7, 9),    # Rank 3
-        (6, 8),    # Rank 4
-        (5, 7),    # Rank 5
-        (4, 6),    # Rank 6
-        (3, 5),    # Rank 7
-        (2, 4),    # Rank 8
-        (1, 3),    # Rank 9
-        (0, 2),    # Rank 10
-        (0, 2),    # Rank 11
-        (0, 2),    # Rank 12
-        (0, 1),    # Rank 13
-        (0, 1),    # Rank 14
-        (0, 1),    # Rank 15
+        (3, 5),   # Rank 1: 3-5 appearances (max half of lineups)
+        (2, 4),   # Rank 2: 2-4 appearances
+        (2, 3),   # Rank 3: 2-3 appearances
+        (1, 3),   # Rank 4: 1-3 appearances
+        (1, 2),   # Rank 5: 1-2 appearances
+        (0, 2),   # Rank 6: 0-2 appearances
+        (0, 2),   # Rank 7: 0-2 appearances
+        (0, 1),   # Rank 8: 0-1 appearances
+        (0, 1),   # Rank 9: 0-1 appearances
+        (0, 1),   # Rank 10: 0-1 appearances
+        (0, 1),   # Rank 11: 0-1 appearances
+        (0, 1),   # Rank 12: 0-1 appearances
+        (0, 1),   # Rank 13: 0-1 appearances
+        (0, 1),   # Rank 14: 0-1 appearances
+        (0, 1),   # Rank 15: 0-1 appearances
     ],
     'WR': [
-        (8, 10),   # Rank 1
-        (7, 9),    # Rank 2
-        (6, 8),    # Rank 3
-        (5, 7),    # Rank 4
-        (4, 6),    # Rank 5
-        (3, 5),    # Rank 6
-        (2, 4),    # Rank 7
-        (1, 3),    # Rank 8
-        (1, 2),    # Rank 9
-        (0, 2),    # Rank 10
-        (0, 1),    # Rank 11
-        (0, 1),    # Rank 12
-        (0, 1),    # Rank 13
-        (0, 1),    # Rank 14
-        (0, 1),    # Rank 15
+        (3, 5),   # Rank 1: 3-5 appearances (max half of lineups)
+        (2, 4),   # Rank 2: 2-4 appearances
+        (2, 3),   # Rank 3: 2-3 appearances
+        (1, 3),   # Rank 4: 1-3 appearances
+        (1, 2),   # Rank 5: 1-2 appearances
+        (0, 2),   # Rank 6: 0-2 appearances
+        (0, 2),   # Rank 7: 0-2 appearances
+        (0, 1),   # Rank 8: 0-1 appearances
+        (0, 1),   # Rank 9: 0-1 appearances
+        (0, 1),   # Rank 10: 0-1 appearances
+        (0, 1),   # Rank 11: 0-1 appearances
+        (0, 1),   # Rank 12: 0-1 appearances
+        (0, 1),   # Rank 13: 0-1 appearances
+        (0, 1),   # Rank 14: 0-1 appearances
+        (0, 1),   # Rank 15: 0-1 appearances
     ],
     'QB': [
-        (8, 10),   # Rank 1
-        (7, 9),    # Rank 2
-        (6, 8),    # Rank 3
-        (4, 6),    # Rank 4
-        (2, 4),    # Rank 5
-        (1, 3),    # Rank 6
-        (0, 2),    # Rank 7
-        (0, 1),    # Rank 8
-        (0, 1),    # Rank 9
-        (0, 1),    # Rank 10
-        (0, 1),    # Rank 11
-        (0, 1),    # Rank 12
-        (0, 1),    # Rank 13
-        (0, 1),    # Rank 14
-        (0, 1),    # Rank 15
+        (3, 5),   # Rank 1: 3-5 appearances (max half of lineups)
+        (2, 4),   # Rank 2: 2-4 appearances
+        (2, 3),   # Rank 3: 2-3 appearances
+        (1, 2),   # Rank 4: 1-2 appearances
+        (0, 2),   # Rank 5: 0-2 appearances
+        (0, 2),   # Rank 6: 0-2 appearances
+        (0, 1),   # Rank 7: 0-1 appearances
+        (0, 1),   # Rank 8: 0-1 appearances
+        (0, 1),   # Rank 9: 0-1 appearances
+        (0, 1),   # Rank 10: 0-1 appearances
+        (0, 1),   # Rank 11: 0-1 appearances
+        (0, 1),   # Rank 12: 0-1 appearances
+        (0, 1),   # Rank 13: 0-1 appearances
+        (0, 1),   # Rank 14: 0-1 appearances
+        (0, 1),   # Rank 15: 0-1 appearances
     ],
     'TE': [
-        (9, 10),   # Rank 1
-        (8, 10),   # Rank 2
-        (7, 9),    # Rank 3
-        (6, 8),    # Rank 4
-        (5, 7),    # Rank 5
-        (3, 5),    # Rank 6
-        (2, 4),    # Rank 7
-        (1, 3),    # Rank 8
-        (0, 2),    # Rank 9
-        (0, 1),    # Rank 10
-        (0, 1),    # Rank 11
-        (0, 1),    # Rank 12
-        (0, 1),    # Rank 13
-        (0, 1),    # Rank 14
-        (0, 1),    # Rank 15
+        (3, 5),   # Rank 1: 3-5 appearances (max half of lineups)
+        (2, 4),   # Rank 2: 2-4 appearances
+        (2, 3),   # Rank 3: 2-3 appearances
+        (1, 3),   # Rank 4: 1-3 appearances
+        (1, 2),   # Rank 5: 1-2 appearances
+        (0, 2),   # Rank 6: 0-2 appearances
+        (0, 2),   # Rank 7: 0-2 appearances
+        (0, 1),   # Rank 8: 0-1 appearances
+        (0, 1),   # Rank 9: 0-1 appearances
+        (0, 1),   # Rank 10: 0-1 appearances
+        (0, 1),   # Rank 11: 0-1 appearances
+        (0, 1),   # Rank 12: 0-1 appearances
+        (0, 1),   # Rank 13: 0-1 appearances
+        (0, 1),   # Rank 14: 0-1 appearances
+        (0, 1),   # Rank 15: 0-1 appearances
     ],
     'DST': [
-        (5, 7),    # Rank 1
-        (4, 6),    # Rank 2
-        (3, 5),    # Rank 3
-        (2, 4),    # Rank 4
-        (1, 3),    # Rank 5
-        (1, 2),    # Rank 6
-        (0, 2),    # Rank 7
-        (0, 1),    # Rank 8
-        (0, 1),    # Rank 9
-        (0, 1),    # Rank 10
-        (0, 1),    # Rank 11
-        (0, 1),    # Rank 12
-        (0, 1),    # Rank 13
-        (0, 1),    # Rank 14
-        (0, 1),    # Rank 15
+        (2, 4),   # Rank 1: 2-4 appearances (DST less concentrated)
+        (2, 3),   # Rank 2: 2-3 appearances
+        (1, 2),   # Rank 3: 1-2 appearances
+        (1, 2),   # Rank 4: 1-2 appearances
+        (0, 2),   # Rank 5: 0-2 appearances
+        (0, 1),   # Rank 6: 0-1 appearances
+        (0, 1),   # Rank 7: 0-1 appearances
+        (0, 1),   # Rank 8: 0-1 appearances
+        (0, 1),   # Rank 9: 0-1 appearances
+        (0, 1),   # Rank 10: 0-1 appearances
+        (0, 1),   # Rank 11: 0-1 appearances
+        (0, 1),   # Rank 12: 0-1 appearances
+        (0, 1),   # Rank 13: 0-1 appearances
+        (0, 1),   # Rank 14: 0-1 appearances
+        (0, 1),   # Rank 15: 0-1 appearances
     ],
 }
 
@@ -157,31 +163,27 @@ class LineupOptimizerService:
         players: List[PlayerOptimizationData],
     ) -> Dict[str, List[PlayerOptimizationData]]:
         """
-        Identify elite players by position based on projection ranking.
+        Identify elite players by position based on Smart Score ranking.
 
-        Updated for portfolio optimization: Uses PROJECTION (not Smart Score) to identify
-        elite players. This provides a more objective measure of expected performance.
+        Uses Smart Score (not projection) to identify elite players based on
+        the customized scoring formula weights.
 
-        Identifies top 15 players per position based on Milly Winner research showing
-        winners heavily favor top-finishing players:
-        - RB: #1 RB in 100% of winners, Top 4 = 76% of slots
-        - WR: Top 5 = 77% of slots
-        - QB: Top 3 in 75% of lineups
-        - TE: Top 5 in 90% of lineups
-        - DST: Top 3 in 75% of lineups
+        Identifies top 15 players per position based on Smart Score:
+        - These players form the elite pool for appearance constraints
+        - Smart Score reflects the user's customized weight preferences
 
         Args:
             players: List of all available players
 
         Returns:
-            Dict mapping position to list of elite players (sorted by projection, highest first)
+            Dict mapping position to list of elite players (sorted by Smart Score, highest first)
         """
         elite_counts = {
-            'QB': 15,   # Top 15 QBs by projection
-            'RB': 15,   # Top 15 RBs by projection
-            'WR': 15,   # Top 15 WRs by projection
-            'TE': 15,   # Top 15 TEs by projection
-            'DST': 15,  # Top 15 DSTs by projection
+            'QB': 15,   # Top 15 QBs by Smart Score
+            'RB': 15,   # Top 15 RBs by Smart Score
+            'WR': 15,   # Top 15 WRs by Smart Score
+            'TE': 15,   # Top 15 TEs by Smart Score
+            'DST': 15,  # Top 15 DSTs by Smart Score
         }
 
         elite_by_position = {}
@@ -190,24 +192,25 @@ class LineupOptimizerService:
             # Get all players at this position
             pos_players = [p for p in players if p.position == position]
 
-            # Sort by PROJECTION (descending) - most objective measure of expected performance
-            # Players with null projections will be sorted to the end (treated as 0)
+            # Sort by SMART SCORE (descending) - reflects customized weights
+            # Players with null Smart Scores will be sorted to the end (treated as 0)
             pos_players_sorted = sorted(
                 pos_players,
-                key=lambda p: p.projection if p.projection is not None else 0,
+                key=lambda p: p.smart_score if p.smart_score is not None else 0,
                 reverse=True
             )
 
-            # Take top N players by projection
+            # Take top N players by Smart Score
             elite_players = pos_players_sorted[:count]
             elite_by_position[position] = elite_players
 
             # Log elite players for debugging
             if elite_players:
-                logger.info(f"Elite {position} players (top {count} by projection):")
+                logger.info(f"Elite {position} players (top {count} by Smart Score):")
                 for i, player in enumerate(elite_players, 1):
+                    ss = player.smart_score if player.smart_score is not None else 0
                     proj = player.projection if player.projection is not None else 0
-                    logger.info(f"  #{i}: {player.name} ({player.team}) - Proj: {proj:.1f}, SS: {player.smart_score:.1f}")
+                    logger.info(f"  #{i}: {player.name} ({player.team}) - SS: {ss:.1f}, Proj: {proj:.1f}")
 
         return elite_by_position
 
@@ -302,7 +305,10 @@ class LineupOptimizerService:
             return [], position_counts
 
         # Convert to optimization data
-        opt_players = self._prepare_players(filtered_players, strategy_mode=settings.strategy_mode)
+        opt_players = self._prepare_players(
+            filtered_players, 
+            strategy_mode=settings.strategy_mode,
+        )
 
         # Log position breakdown BEFORE filtering
         pre_filter_positions = {}
@@ -627,19 +633,75 @@ class LineupOptimizerService:
             # Stacking constraints
             self._add_stacking_constraints(prob, opt_players, game_info, lineup_vars, settings, lineup_idx)
 
+            # Average ownership constraint (per lineup)
+            self._add_avg_ownership_constraint(prob, opt_players, lineup_vars, settings, lineup_idx)
+
         logger.info(f"Applied per-lineup constraints for 10 lineups")
 
-        # Add elite appearance constraints (portfolio-level)
+        # Elite appearance constraints - now based on Smart Score ranking with reduced limits
+        # Max appearance capped at 5 (half of 10 lineups) for top players
         constraint_metadata = self._add_elite_appearance_constraints(
             prob, player_vars, elite_by_position, opt_players
         )
-        logger.info(f"Added {len(constraint_metadata)} elite appearance constraints")
-
-        # Solve with progressive relaxation if needed
-        lineups = self._solve_with_relaxation(
-            prob, player_vars, opt_players, elite_by_position, constraint_metadata
-        )
-
+        logger.info(f"Added {len(constraint_metadata)} elite appearance constraints (Smart Score-based, max 5 appearances)")
+        
+        # Solve with elite constraints
+        logger.info("Starting portfolio optimization solve...")
+        logger.info(f"Problem has {len(prob.constraints)} total constraints")
+        start_solve_time = time.time()
+        # Enable solver messages temporarily for debugging (msg=1)
+        prob.solve(pulp.PULP_CBC_CMD(msg=1, timeLimit=300))  # 5 minute timeout
+        solve_duration = time.time() - start_solve_time
+        logger.info(f"Portfolio optimization solve completed in {solve_duration:.2f} seconds with status: {pulp.LpStatus[prob.status]}")
+        
+        if prob.status != pulp.LpStatusOptimal:
+            logger.warning(f"Portfolio optimization failed with status: {pulp.LpStatus[prob.status]}")
+            return None
+        
+        # Extract lineups from solution
+        lineups = []
+        for lineup_idx in range(10):
+            selected_players = []
+            total_salary = 0
+            total_smart_score = 0.0
+            total_projection = 0.0
+            total_ownership = 0.0
+            
+            for player in opt_players:
+                if player_vars[lineup_idx][player.player_id].varValue == 1:
+                    selected_players.append({
+                        'position': player.position,
+                        'player_key': player.player_key,
+                        'name': player.name,
+                        'team': player.team,
+                        'salary': player.salary,
+                        'smart_score': player.smart_score,
+                        'ownership': player.ownership,
+                        'projection': player.projection,
+                    })
+                    total_salary += player.salary
+                    total_smart_score += player.smart_score
+                    total_projection += player.projection if player.projection else 0
+                    total_ownership += player.ownership or 0.0
+            
+            if not selected_players:
+                logger.warning(f"Lineup {lineup_idx + 1} has no players")
+                continue
+            
+            avg_ownership = total_ownership / len(selected_players) if selected_players else 0.0
+            if avg_ownership > 1.0:
+                avg_ownership = avg_ownership / 100.0
+            
+            lineups.append(GeneratedLineup(
+                lineup_number=lineup_idx + 1,
+                players=selected_players,
+                total_salary=total_salary,
+                projected_score=total_smart_score,
+                projected_points=total_projection,
+                avg_ownership=avg_ownership,
+            ))
+        
+        logger.info(f"Generated {len(lineups)} lineups with Smart Score-based elite constraints")
         return lineups
 
     def _add_elite_appearance_constraints(
@@ -920,7 +982,7 @@ class LineupOptimizerService:
     def _prepare_players(
         self,
         players: List[PlayerScoreResponse],
-        strategy_mode: str = 'Balanced'
+        strategy_mode: str = 'Balanced',
     ) -> List[PlayerOptimizationData]:
         """
         Convert PlayerScoreResponse to PlayerOptimizationData.
@@ -1141,6 +1203,9 @@ class LineupOptimizerService:
         # Stacking rules
         self._add_stacking_constraints(prob, opt_players, game_info, player_vars, settings)
 
+        # Average ownership constraint
+        self._add_avg_ownership_constraint(prob, opt_players, player_vars, settings)
+
         # Solve
         prob.solve(pulp.PULP_CBC_CMD(msg=0))
 
@@ -1280,6 +1345,58 @@ class LineupOptimizerService:
                 game_str = "_".join(game_key)
                 prob += pulp.lpSum([player_vars[p.player_id] for p in game_players]) <= max_game, f"game_{game_str}{suffix}"
 
+    def _add_avg_ownership_constraint(
+        self,
+        prob: pulp.LpProblem,
+        players: List[PlayerOptimizationData],
+        player_vars: Dict[int, pulp.LpVariable],
+        settings: OptimizationSettings,
+        lineup_idx: Optional[int] = None,
+    ):
+        """
+        Add constraint limiting average ownership of the lineup.
+        
+        Constraint: sum(ownership[i] * player_vars[i]) / 9 <= max_ownership
+        Rewritten as: sum(ownership[i] * player_vars[i]) <= max_ownership * 9
+        
+        This ensures the overall lineup average ownership is below the threshold.
+        Ownership values are normalized to 0-1 format before applying constraint.
+        """
+        if settings.max_ownership is None or settings.max_ownership <= 0:
+            return
+        
+        suffix = f"_lineup_{lineup_idx}" if lineup_idx is not None else ""
+        
+        # Calculate sum of ownership for selected players
+        # Normalize ownership to 0-1 format if needed (ownership might be stored as 0-100)
+        ownership_sum = pulp.lpSum([
+            self._normalize_ownership(player.ownership or 0.0) * player_vars[player.player_id]
+            for player in players
+        ])
+        
+        # Constraint: average ownership <= max_ownership
+        # Since we have exactly 9 players: sum(ownership) / 9 <= max_ownership
+        # Rewritten as: sum(ownership) <= max_ownership * 9
+        max_total_ownership = settings.max_ownership * TOTAL_POSITIONS
+        prob += ownership_sum <= max_total_ownership, f"avg_ownership{suffix}"
+        
+        logger.debug(
+            f"Added avg ownership constraint: sum <= {max_total_ownership:.3f} "
+            f"(max avg: {settings.max_ownership * 100:.1f}%)"
+        )
+
+    def _normalize_ownership(self, ownership: float) -> float:
+        """
+        Normalize ownership value to 0-1 format.
+        
+        Handles both formats:
+        - 0-1 format (decimal): returns as-is
+        - 0-100 format (percentage): divides by 100
+        """
+        if ownership > 1.0:
+            return ownership / 100.0
+        return ownership
+
     def _add_stacking_constraints(
         self,
         prob: pulp.LpProblem,
@@ -1357,6 +1474,9 @@ class LineupOptimizerService:
         ])
         prob += salary_sum >= min_salary
         prob += salary_sum <= SALARY_CAP
+
+        # Average ownership constraint (if set)
+        self._add_avg_ownership_constraint(prob, opt_players, player_vars, settings)
 
         # Solve
         prob.solve(pulp.PULP_CBC_CMD(msg=0))

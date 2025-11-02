@@ -170,18 +170,20 @@ export const LineupConfigurationPanel: React.FC<LineupConfigurationPanelProps> =
             }}
           />
 
-          <Divider />
-
-          {/* Exclude Bottom Percentile */}
+          {/* Max Ownership */}
           <TextField
-            label="Exclude Bottom % of Players"
+            label="Max Avg Ownership %"
             type="number"
-            value={settings.exclude_bottom_percentile || 0}
-            onChange={(e) => handleChange('exclude_bottom_percentile', parseFloat(e.target.value) || 0)}
+            value={((settings.max_ownership ?? 0.15) * 100).toFixed(0)}
+            onChange={(e) => {
+              const value = parseFloat(e.target.value) || 0;
+              // Convert percentage to decimal (0-1)
+              handleChange('max_ownership', Math.max(0, Math.min(100, value)) / 100);
+            }}
             inputProps={{ min: 0, max: 100, step: 1 }}
             size="small"
             fullWidth
-            helperText="Exclude bottom X% by Smart Score (adapts to score distribution)"
+            helperText="Maximum average ownership for entire lineup (not individual players)"
             sx={{
               '& .MuiInputBase-input': {
                 fontSize: '0.875rem',

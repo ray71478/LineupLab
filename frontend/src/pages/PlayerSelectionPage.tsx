@@ -2,8 +2,10 @@
  * Player Selection Page
  *
  * Allows users to select players for lineup optimization:
- * - Filter by Smart Score threshold
- * - Select all players >= threshold
+ * - Filter by Smart Score percentile (exclude bottom X%)
+ * - Filter by minimum ITT (Implied Team Total)
+ * - Filter by 3.5X value (ceiling >= salary/1000 * 3.5)
+ * - Select all players meeting filters
  * - Select individual players
  * - Review and approve selected players
  * - Send to lineup creation page
@@ -32,6 +34,8 @@ import {
   TableHead,
   TableRow,
   Chip,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -55,7 +59,9 @@ export const PlayerSelectionPage: React.FC = () => {
 
   const [players, setPlayers] = useState<PlayerScoreResponse[]>([]);
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<number>>(new Set());
-  const [smartScoreThreshold, setSmartScoreThreshold] = useState<number>(25);
+  const [excludeBottomPercentile, setExcludeBottomPercentile] = useState<number>(15);
+  const [minITT, setMinITT] = useState<number>(18.5);
+  const [meets35XValue, setMeets35XValue] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,21 +101,64 @@ export const PlayerSelectionPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekId, JSON.stringify(currentWeights), JSON.stringify(currentConfig)]);
 
-  // Filter players by threshold
+  // Filter players by percentile, ITT, and 3.5X value
   const filteredPlayers = useMemo(() => {
-    if (smartScoreThreshold <= 0) return players;
-    return players.filter(
-      (p) => p.smart_score !== null && p.smart_score !== undefined && p.smart_score >= smartScoreThreshold
-    );
-  }, [players, smartScoreThreshold]);
+    let filtered = [...players];
 
-  // Select all players meeting threshold
+    // Filter by Smart Score percentile (exclude bottom X%)
+    if (excludeBottomPercentile > 0 && excludeBottomPercentile < 100) {
+      // Filter out players with no Smart Score first
+      const playersWithScores = filtered.filter(
+        (p) => p.smart_score !== null && p.smart_score !== undefined
+      );
+
+      if (playersWithScores.length > 0) {
+        // Sort by Smart Score (descending)
+        const sorted = [...playersWithScores].sort(
+          (a, b) => (b.smart_score || 0) - (a.smart_score || 0)
+        );
+
+        // Calculate how many to exclude from bottom
+        const excludeCount = Math.floor(
+          sorted.length * (excludeBottomPercentile / 100)
+        );
+
+        // Take top (100 - excludeBottomPercentile)%
+        if (excludeCount > 0 && excludeCount < sorted.length) {
+          const topPlayers = sorted.slice(0, sorted.length - excludeCount);
+          const topPlayerIds = new Set(topPlayers.map((p) => p.player_id));
+          filtered = filtered.filter((p) => topPlayerIds.has(p.player_id));
+        }
+      }
+    }
+
+    // Filter by minimum ITT
+    if (minITT > 0) {
+      filtered = filtered.filter(
+        (p) =>
+          p.implied_team_total !== null &&
+          p.implied_team_total !== undefined &&
+          p.implied_team_total >= minITT
+      );
+    }
+
+    // Filter by 3.5X value (ceiling >= salary/1000 * 3.5)
+    if (meets35XValue) {
+      filtered = filtered.filter((p) => {
+        if (!p.ceiling || p.salary <= 0) return false;
+        const threePointFiveX = (p.salary / 1000) * 3.5;
+        return p.ceiling >= threePointFiveX;
+      });
+    }
+
+    return filtered;
+  }, [players, excludeBottomPercentile, minITT, meets35XValue]);
+
+  // Select all players meeting filters
   const handleSelectAll = () => {
     const newSelection = new Set(selectedPlayerIds);
     filteredPlayers.forEach((player) => {
-      if (player.smart_score !== null && player.smart_score !== undefined) {
-        newSelection.add(player.player_id);
-      }
+      newSelection.add(player.player_id);
     });
     setSelectedPlayerIds(newSelection);
   };
@@ -195,19 +244,61 @@ export const PlayerSelectionPage: React.FC = () => {
       >
         <Stack spacing={2} direction={{ xs: 'column', md: 'row' }} alignItems="center">
           <TextField
-            label="Smart Score Threshold"
+            label="Exclude Bottom %"
             type="number"
-            value={smartScoreThreshold}
-            onChange={(e) => setSmartScoreThreshold(parseFloat(e.target.value) || 0)}
-            placeholder="25 (default)"
+            value={excludeBottomPercentile}
+            onChange={(e) => setExcludeBottomPercentile(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
+            placeholder="0"
+            inputProps={{ min: 0, max: 100, step: 1 }}
             size="small"
             sx={{
-              flex: { xs: 1, md: '0 0 200px' },
+              flex: { xs: 1, md: '0 0 150px' },
               '& .MuiInputBase-input': {
                 fontSize: '0.875rem',
               },
             }}
-            helperText="Filter players for selection (not used by optimizer)"
+            helperText="Exclude bottom X% by Smart Score"
+          />
+
+          <TextField
+            label="Min ITT"
+            type="number"
+            value={minITT}
+            onChange={(e) => setMinITT(Math.max(0, parseFloat(e.target.value) || 0))}
+            placeholder="0"
+            inputProps={{ min: 0, step: 0.5 }}
+            size="small"
+            sx={{
+              flex: { xs: 1, md: '0 0 120px' },
+              '& .MuiInputBase-input': {
+                fontSize: '0.875rem',
+              },
+            }}
+            helperText="Minimum Implied Team Total"
+          />
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={meets35XValue}
+                onChange={(e) => setMeets35XValue(e.target.checked)}
+                size="small"
+                sx={{
+                  '& .MuiSwitch-switchBase.Mui-checked': {
+                    color: '#ff6b35',
+                  },
+                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                    backgroundColor: '#ff6b35',
+                  },
+                }}
+              />
+            }
+            label={
+              <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
+                3.5X ≤ Ceiling
+              </Typography>
+            }
+            sx={{ ml: 1 }}
           />
 
           <Button
@@ -347,6 +438,18 @@ export const PlayerSelectionPage: React.FC = () => {
                   >
                     Smart Score
                   </TableCell>
+                  <TableCell
+                    align="right"
+                    sx={{ backgroundColor: '#0a0a0a', borderBottom: '1px solid rgba(255, 107, 53, 0.2)', fontWeight: 600 }}
+                  >
+                    ITT
+                  </TableCell>
+                  <TableCell
+                    align="right"
+                    sx={{ backgroundColor: '#0a0a0a', borderBottom: '1px solid rgba(255, 107, 53, 0.2)', fontWeight: 600 }}
+                  >
+                    Ceiling
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -401,6 +504,26 @@ export const PlayerSelectionPage: React.FC = () => {
                           }}
                         >
                           {player.smart_score?.toFixed(1) || '-'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography
+                          sx={{
+                            color: 'text.secondary',
+                            fontSize: '0.875rem',
+                          }}
+                        >
+                          {player.implied_team_total?.toFixed(1) || '-'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography
+                          sx={{
+                            color: 'text.secondary',
+                            fontSize: '0.875rem',
+                          }}
+                        >
+                          {player.ceiling?.toFixed(1) || '-'}
                         </Typography>
                       </TableCell>
                     </TableRow>

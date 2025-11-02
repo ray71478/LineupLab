@@ -52,34 +52,43 @@ export const LineupGenerationProgress: React.FC<LineupGenerationProgressProps> =
     return null;
   }
 
-  // Adaptive progress estimation based on elapsed time
+  // Stage-based progress estimation with guaranteed minimums
+  // Ensures progress never goes backwards - each stage builds on the previous
   // Portfolio optimization typically takes 30-90 seconds
-  // If it's been running longer, it's likely taking the full time
   const getEstimatedProgress = (elapsed: number): { progress: number; estimate: string } => {
-    // Base estimate: 30-60 seconds for typical problems
-    const baseEstimate = 45;
-    
-    // If it's been running longer than base estimate, likely going to 90s timeout
+    // Stage 1: Early (0-15s) → 0% to 30%
     if (elapsed < 15) {
-      // Early stage: optimistic estimate
+      const stageProgress = (elapsed / 15) * 30; // 0-30%
       return {
-        progress: Math.min((elapsed / 45) * 100, 30), // Cap at 30% for early stage
+        progress: stageProgress,
         estimate: '~30-45s',
       };
-    } else if (elapsed < 45) {
-      // Mid stage: use elapsed time as indicator
-      const remaining = Math.max(30 - elapsed, 10);
+    }
+    
+    // Stage 2: Mid (15-45s) → 30% to 85%
+    if (elapsed < 45) {
+      const stageElapsed = elapsed - 15; // Time within this stage
+      const stageDuration = 30; // Duration of this stage (15-45s)
+      const stageProgress = (stageElapsed / stageDuration) * 55; // 0-55% within stage
+      const progress = 30 + stageProgress; // 30-85% total
+      const remaining = Math.max(30 - stageElapsed, 10);
       return {
-        progress: Math.min((elapsed / 60) * 100, 85), // Cap at 85% until near completion
+        progress,
         estimate: `~${Math.round(remaining)}s`,
       };
-    } else {
-      // Late stage: likely going to timeout or very close
-      return {
-        progress: Math.min((elapsed / 90) * 100, 95), // Cap at 95% until done
-        estimate: elapsed < 90 ? `~${Math.round(90 - elapsed)}s` : 'finishing up...',
-      };
     }
+    
+    // Stage 3: Late (45-90s) → 85% to 95%
+    const stageElapsed = elapsed - 45; // Time within this stage
+    const stageDuration = 45; // Duration of this stage (45-90s)
+    const stageProgress = Math.min((stageElapsed / stageDuration) * 10, 10); // 0-10% within stage
+    const progress = 85 + stageProgress; // 85-95% total
+    const remaining = Math.max(90 - elapsed, 0);
+    
+    return {
+      progress: Math.min(progress, 95), // Cap at 95% until done
+      estimate: remaining > 0 ? `~${Math.round(remaining)}s` : 'finishing up...',
+    };
   };
 
   const { progress, estimate } = getEstimatedProgress(elapsedSeconds);

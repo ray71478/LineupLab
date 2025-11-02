@@ -74,6 +74,12 @@ class OptimizationSettings(BaseModel):
         le=100,
         description="Exclude bottom X% of players by Smart Score (0-100). Adapts to actual score distribution. Default 0.0 = no filtering."
     )
+    max_ownership: Optional[float] = Field(
+        default=0.15,
+        ge=0,
+        le=1,
+        description="Maximum average ownership for entire lineup (0-1). Constraint ensures sum(ownership) / 9 <= max_ownership. Default 0.15 (15%)."
+    )
     
     class Config:
         from_attributes = True

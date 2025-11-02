@@ -1089,6 +1089,8 @@ class SmartScoreService:
                 salary=player_data.salary,
                 projection=player_data.projection,
                 ownership=player_data.ownership,
+                ceiling=player_data.ceiling,
+                floor=player_data.floor,
                 smart_score=smart_score,
                 projection_source=player_data.projection_source,
                 opponent_rank_category=player_data.opponent_rank_category,
