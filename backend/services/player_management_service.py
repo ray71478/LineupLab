@@ -168,12 +168,22 @@ class PlayerManagementService:
             unmatched_count = unmatched_result if unmatched_result else 0
 
             # Add pagination
-            sql += f" LIMIT :limit OFFSET :offset"
-            params["limit"] = limit
-            params["offset"] = offset
+            sql += " LIMIT :limit OFFSET :offset"
+            # Ensure limit and offset are integers for PostgreSQL
+            params["limit"] = int(limit)
+            params["offset"] = int(offset)
 
-            # Execute query
-            result = self.session.execute(text(sql), params).fetchall()
+            # Execute query with error handling
+            try:
+                result = self.session.execute(text(sql), params).fetchall()
+            except Exception as e:
+                logger.error(
+                    f"SQL query failed: {str(e)}\n"
+                    f"SQL: {sql}\n"
+                    f"Params: {params}",
+                    exc_info=True
+                )
+                raise
 
             # Convert to PlayerResponse objects
             players = []
