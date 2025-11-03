@@ -143,7 +143,7 @@ class PlayerManagementService:
                 sql += " ORDER BY p.name ASC"
 
             # Get total count (before pagination) - use same WHERE clause
-            count_sql = f"""
+            count_sql = """
                 SELECT COUNT(*)
                 FROM player_pools p
                 LEFT JOIN unmatched_players u ON p.player_key = u.suggested_player_key
@@ -154,8 +154,17 @@ class PlayerManagementService:
             if team:
                 count_sql += " AND p.team = :team"
 
-            total_result = self.session.execute(text(count_sql), params).scalar()
-            total = total_result if total_result else 0
+            try:
+                total_result = self.session.execute(text(count_sql), params).scalar()
+                total = total_result if total_result else 0
+            except Exception as e:
+                logger.error(
+                    f"Count SQL query failed: {str(e)}\n"
+                    f"SQL: {count_sql}\n"
+                    f"Params: {params}",
+                    exc_info=True
+                )
+                raise
 
             # Get unmatched count (separate, cached in session)
             unmatched_sql = """
