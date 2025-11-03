@@ -82,7 +82,7 @@ export const PlayerSelectionPage: React.FC = () => {
   const [showModeChangeToast, setShowModeChangeToast] = useState(false);
 
   // Track previous mode to detect changes
-  const previousMode = useRef(mode);
+  const previousMode = useRef<string | null>(null);
 
   // Initialize filters based on mode on mount
   useEffect(() => {
@@ -91,6 +91,7 @@ export const PlayerSelectionPage: React.FC = () => {
     setMinITT(mode === 'showdown' ? 0.5 : 18.5);
     setMeets35XValue(mode === 'showdown' ? false : true);
     previousMode.current = mode;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run only on mount
 
   // Load players with Smart Scores
@@ -132,24 +133,27 @@ export const PlayerSelectionPage: React.FC = () => {
 
   // Clear player selections when mode changes
   useEffect(() => {
-    // Skip on initial mount
-    if (previousMode.current === mode) {
+    // Skip on initial mount (when previousMode is null)
+    if (previousMode.current === null) {
+      previousMode.current = mode;
       return;
     }
 
     // Mode has changed - clear selections and reset filters to mode-appropriate defaults
-    if (selectedPlayerIds.size > 0) {
-      setSelectedPlayerIds(new Set());
-      setShowModeChangeToast(true);
-    }
-    
-    // Reset filters to mode-appropriate defaults
-    setExcludeBottomPercentile(mode === 'showdown' ? 1 : 15);
-    setMinITT(mode === 'showdown' ? 0.5 : 18.5);
-    setMeets35XValue(mode === 'showdown' ? false : true);
+    if (previousMode.current !== mode) {
+      if (selectedPlayerIds.size > 0) {
+        setSelectedPlayerIds(new Set());
+        setShowModeChangeToast(true);
+      }
+      
+      // Reset filters to mode-appropriate defaults
+      setExcludeBottomPercentile(mode === 'showdown' ? 1 : 15);
+      setMinITT(mode === 'showdown' ? 0.5 : 18.5);
+      setMeets35XValue(mode === 'showdown' ? false : true);
 
-    // Update previous mode reference
-    previousMode.current = mode;
+      // Update previous mode reference
+      previousMode.current = mode;
+    }
   }, [mode, selectedPlayerIds.size]);
 
   // Filter players by percentile, ITT, and 3.5X value
