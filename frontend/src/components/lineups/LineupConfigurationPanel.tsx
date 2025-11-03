@@ -189,7 +189,9 @@ export const LineupConfigurationPanel: React.FC<LineupConfigurationPanelProps> =
                         value={player.player_key}
                         sx={{ fontSize: '0.875rem' }}
                       >
-                        {player.name} ({player.position}) - ${(player.salary / 1000).toFixed(1)}K
+                        {mode === 'showdown' 
+                          ? `${player.name} - $${(player.salary / 1000).toFixed(1)}K`
+                          : `${player.name} (${player.position}) - $${(player.salary / 1000).toFixed(1)}K`}
                       </MenuItem>
                     ))}
                   </Select>
@@ -217,7 +219,7 @@ export const LineupConfigurationPanel: React.FC<LineupConfigurationPanelProps> =
           <TextField
             label="Max Avg Ownership %"
             type="number"
-            value={((settings.max_ownership ?? 0.15) * 100).toFixed(0)}
+            value={((settings.max_ownership ?? (isShowdownMode ? 0.75 : 0.15)) * 100).toFixed(0)}
             onChange={(e) => {
               const value = parseFloat(e.target.value) || 0;
               // Convert percentage to decimal (0-1)

@@ -48,7 +48,7 @@ TOTAL_POSITIONS = sum(POSITION_REQUIREMENTS.values())  # 9
 
 # DraftKings Showdown constraints
 SHOWDOWN_SALARY_CAP = 50000
-SHOWDOWN_MIN_SALARY = SHOWDOWN_SALARY_CAP - 2000  # $48,000 minimum
+SHOWDOWN_MIN_SALARY = SHOWDOWN_SALARY_CAP - 3000  # $47,000 minimum
 SHOWDOWN_POSITION_REQUIREMENTS = {
     'CPT': 1,   # Captain (any position)
     'FLEX': 5,  # FLEX (QB/RB/WR/TE/K/DST)
@@ -354,7 +354,10 @@ class LineupOptimizerService:
         - Then generates N user-requested lineups using portfolio optimization
 
         Showdown:
-        - Generates N lineups with 1 CPT + 5 FLEX format
+        - Always generates 2 baseline lineups first:
+          1. "Best Smart Score" - Pure Smart Score optimization (lineup_number = -1)
+          2. "Best Projection" - Pure projection optimization (lineup_number = -2)
+        - Then generates N user-requested lineups with 1 CPT + 5 FLEX format
         - Captain selection based on value: smart_score / salary
         - Different captains across lineups for diversity
 
@@ -458,6 +461,59 @@ class LineupOptimizerService:
             logger.error(f"Showdown lineup not feasible: {error_msg}")
             return [], {}
 
+        # Generate baseline lineups first (Best Smart Score and Best Projection)
+        generated_lineups = []
+        
+        # Baseline 1: Best Smart Score (lineup_number = -1)
+        try:
+            logger.info("Attempting to generate showdown 'Best Smart Score' baseline...")
+            baseline_smart_score = self._generate_baseline_showdown_lineup(
+                opt_players=opt_players,
+                settings=settings,
+                lineup_number=-1,
+                optimize_for='smart_score',
+            )
+            if baseline_smart_score:
+                generated_lineups.append(baseline_smart_score)
+                logger.info(
+                    f"✓ Generated showdown baseline 'Best Smart Score': "
+                    f"captain={baseline_smart_score.players[0]['name'] if baseline_smart_score.players else 'N/A'}, "
+                    f"salary=${baseline_smart_score.total_salary}, "
+                    f"score={baseline_smart_score.projected_score:.1f}, proj={baseline_smart_score.projected_points:.1f}"
+                )
+            else:
+                logger.error(
+                    "✗ Failed to generate showdown 'Best Smart Score' baseline lineup. "
+                    "Check logs above for optimization failure reason."
+                )
+        except Exception as e:
+            logger.error(
+                f"✗ Exception generating showdown 'Best Smart Score' baseline: {e}", 
+                exc_info=True
+            )
+
+        # Baseline 2: Best Projection (lineup_number = -2)
+        try:
+            logger.info("Attempting to generate showdown 'Best Projection' baseline...")
+            baseline_projection = self._generate_baseline_showdown_lineup(
+                opt_players=opt_players,
+                settings=settings,
+                lineup_number=-2,
+                optimize_for='projection',
+            )
+            if baseline_projection:
+                generated_lineups.append(baseline_projection)
+                logger.info(
+                    f"✓ Generated showdown baseline 'Best Projection': "
+                    f"captain={baseline_projection.players[0]['name'] if baseline_projection.players else 'N/A'}, "
+                    f"salary=${baseline_projection.total_salary}, "
+                    f"score={baseline_projection.projected_score:.1f}, proj={baseline_projection.projected_points:.1f}"
+                )
+            else:
+                logger.warning("✗ Failed to generate showdown 'Best Projection' baseline lineup")
+        except Exception as e:
+            logger.error(f"✗ Error generating showdown 'Best Projection' baseline: {e}", exc_info=True)
+
         # Select captain candidates (uses cache from Task 15.2)
         captain_selection_start = time.time()
         captain_candidates = self._select_captain_candidates(
@@ -469,10 +525,13 @@ class LineupOptimizerService:
 
         if not captain_candidates:
             logger.error("No captain candidates found")
+            # Return baseline lineups if we have them, even if no candidates found
+            if generated_lineups:
+                logger.info(f"Returning {len(generated_lineups)} baseline showdown lineups")
+                return generated_lineups, None
             return [], {}
 
-        # Generate lineups with different captains
-        generated_lineups = []
+        # Generate regular lineups with different captains
         lineup_gen_times = []
 
         for lineup_idx in range(settings.num_lineups):
@@ -561,16 +620,18 @@ class LineupOptimizerService:
         # Constraint: Exactly 5 FLEX players
         prob += pulp.lpSum([flex_vars[p.player_id] for p in opt_players if p.player_id != captain.player_id]) == 5
 
-        # Constraint: Total salary <= $50,000
+        # Constraint: Total salary <= $50,000 (DraftKings Showdown cap)
         # Captain salary = base_salary * 1.5
         captain_salary = int(captain.salary * CAPTAIN_MULTIPLIER)
         flex_salary_sum = pulp.lpSum([
             player.salary * flex_vars[player.player_id]
             for player in opt_players if player.player_id != captain.player_id
         ])
+        # Total salary = (captain base salary * 1.5) + sum(FLEX base salaries) <= $50,000
         prob += captain_salary + flex_salary_sum <= SHOWDOWN_SALARY_CAP
 
         # Constraint: Total salary >= $48,000 (use most of budget)
+        prob += captain_salary + flex_salary_sum >= SHOWDOWN_MIN_SALARY
 
         # Ownership constraint (if set)
         if settings.max_ownership and settings.max_ownership > 0:
@@ -635,15 +696,338 @@ class LineupOptimizerService:
                     total_projection += player.projection if player.projection else 0
                     total_ownership += player.ownership or 0.0
 
-        # Validate lineup
+        # Validate lineup structure: Must have exactly 1 Captain + 5 FLEX = 6 total players
+        captain_count = sum(1 for p in selected_players if p.get('is_captain', False))
+        flex_count = sum(1 for p in selected_players if not p.get('is_captain', False))
+        
         if len(selected_players) != SHOWDOWN_TOTAL_POSITIONS:
             logger.warning(f"Invalid showdown lineup: {len(selected_players)} players (expected {SHOWDOWN_TOTAL_POSITIONS})")
+            return None
+        
+        if captain_count != 1:
+            logger.warning(f"Invalid showdown lineup: {captain_count} captains (expected 1)")
+            return None
+        
+        if flex_count != 5:
+            logger.warning(f"Invalid showdown lineup: {flex_count} FLEX players (expected 5)")
+            return None
+        
+        # Validate salary cap: total_salary should be <= $50,000
+        # total_salary = (captain base salary * 1.5) + sum(FLEX base salaries)
+        if total_salary > SHOWDOWN_SALARY_CAP:
+            logger.warning(
+                f"Invalid showdown lineup salary: ${total_salary} exceeds ${SHOWDOWN_SALARY_CAP} cap "
+                f"(captain=${captain_salary}, flex=${total_salary - captain_salary})"
+            )
             return None
 
         avg_ownership = total_ownership / len(selected_players) if selected_players else 0.0
         if avg_ownership > 1.0:
             avg_ownership = avg_ownership / 100.0
 
+        return GeneratedLineup(
+            lineup_number=lineup_number,
+            players=selected_players,
+            total_salary=total_salary,
+            projected_score=total_smart_score,
+            projected_points=total_projection,
+            avg_ownership=avg_ownership,
+        )
+
+    def _generate_baseline_showdown_lineup(
+        self,
+        opt_players: List[PlayerOptimizationData],
+        settings: OptimizationSettings,
+        lineup_number: int,
+        optimize_for: str,  # 'smart_score' or 'projection'
+    ) -> Optional[GeneratedLineup]:
+        """
+        Generate a baseline showdown lineup optimizing purely for Smart Score or Projection.
+        
+        For baseline lineups:
+        - Selects best captain for the optimization objective
+        - Optimizes 5 FLEX positions for the same objective
+        - No ownership constraints
+        - Pure optimization without diversity penalties
+        
+        Args:
+            opt_players: All available players
+            settings: Optimization settings
+            lineup_number: Lineup number (-1 for best smart score, -2 for best projection)
+            optimize_for: 'smart_score' or 'projection'
+        
+        Returns:
+            GeneratedLineup object or None if failed
+        """
+        # For baseline lineups, we need to try all feasible captains and pick the one that
+        # maximizes total projection/smart_score when combined with optimal FLEX players
+        # This is more complex but ensures we get the true maximum
+        
+        best_lineup_result = None  # Will be set for projection case
+        
+        if optimize_for == 'smart_score':
+            # For smart_score: Select captain based on value (smart_score / salary)
+            captain_candidates = []
+            
+            for player in opt_players:
+                captain_salary = int(player.salary * CAPTAIN_MULTIPLIER)
+                remaining_salary = SHOWDOWN_SALARY_CAP - captain_salary
+                
+                # Check if we can fit 5 cheapest FLEX players
+                other_players = [p for p in opt_players if p.player_id != player.player_id]
+                if len(other_players) < 5:
+                    continue
+                
+                other_players_sorted = sorted(other_players, key=lambda p: p.salary)
+                min_flex_cost = sum(p.salary for p in other_players_sorted[:5])
+                
+                if min_flex_cost > remaining_salary:
+                    continue  # This captain is not feasible
+                
+                # Use smart_score / salary (captain multiplier cancels out)
+                captain_value = player.smart_score / player.salary if player.salary > 0 else 0
+                captain_candidates.append((player, captain_value))
+            
+            if not captain_candidates:
+                logger.warning(f"Baseline showdown {optimize_for}: No feasible captains found")
+                return None
+            
+            # Select captain with best value
+            captain_candidates.sort(key=lambda x: x[1], reverse=True)
+            best_captain = captain_candidates[0][0]
+            
+        else:  # 'projection'
+            # For projection: Try all feasible captains, optimize FLEX for each, pick best total
+            # This ensures we get the lineup with maximum total projection, not just best value
+            best_total_projection = -1
+            best_captain = None
+            best_lineup_result = None
+            
+            captain_candidates = []
+            for player in opt_players:
+                if not player.projection:
+                    continue
+                    
+                captain_salary = int(player.salary * CAPTAIN_MULTIPLIER)
+                remaining_salary = SHOWDOWN_SALARY_CAP - captain_salary
+                
+                # Check if we can fit 5 cheapest FLEX players
+                other_players = [p for p in opt_players if p.player_id != player.player_id]
+                if len(other_players) < 5:
+                    continue
+                
+                other_players_sorted = sorted(other_players, key=lambda p: p.salary)
+                min_flex_cost = sum(p.salary for p in other_players_sorted[:5])
+                
+                if min_flex_cost > remaining_salary:
+                    continue  # This captain is not feasible
+                
+                captain_candidates.append(player)
+            
+            if not captain_candidates:
+                logger.warning(f"Baseline showdown {optimize_for}: No feasible captains found")
+                return None
+            
+            # Try each feasible captain and optimize FLEX to maximize total projection
+            for candidate_captain in captain_candidates:
+                # Create temporary problem to test this captain
+                test_prob = pulp.LpProblem(f"Test_Projection_Captain_{candidate_captain.player_id}", pulp.LpMaximize)
+                
+                # Create binary variables for FLEX positions
+                flex_vars_test = {}
+                for player in opt_players:
+                    if player.player_id != candidate_captain.player_id:
+                        var_name = f"flex_{player.player_id}"
+                        flex_vars_test[player.player_id] = pulp.LpVariable(var_name, cat='Binary')
+                
+                # Objective: Maximize total projection (captain * 1.5 + sum(FLEX))
+                objective_terms_test = [candidate_captain.projection * CAPTAIN_MULTIPLIER]
+                for player in opt_players:
+                    if player.player_id != candidate_captain.player_id:
+                        if player.projection:
+                            objective_terms_test.append(
+                                player.projection * flex_vars_test[player.player_id]
+                            )
+                
+                test_prob += pulp.lpSum(objective_terms_test)
+                
+                # Constraint: Exactly 5 FLEX players
+                test_prob += pulp.lpSum([flex_vars_test[p.player_id] for p in opt_players if p.player_id != candidate_captain.player_id]) == 5
+                
+                # Constraint: Total salary <= $50,000
+                captain_salary_test = int(candidate_captain.salary * CAPTAIN_MULTIPLIER)
+                flex_salary_sum_test = pulp.lpSum([
+                    player.salary * flex_vars_test[player.player_id]
+                    for player in opt_players if player.player_id != candidate_captain.player_id
+                ])
+                test_prob += captain_salary_test + flex_salary_sum_test <= SHOWDOWN_SALARY_CAP
+                test_prob += captain_salary_test + flex_salary_sum_test >= SHOWDOWN_MIN_SALARY
+                
+                # Solve
+                test_prob.solve(pulp.PULP_CBC_CMD(msg=0))
+                
+                if test_prob.status == pulp.LpStatusOptimal:
+                    # Calculate total projection for this captain
+                    test_total_projection = candidate_captain.projection * CAPTAIN_MULTIPLIER
+                    for player in opt_players:
+                        if player.player_id != candidate_captain.player_id:
+                            if flex_vars_test[player.player_id].varValue == 1 and player.projection:
+                                test_total_projection += player.projection
+                    
+                    if test_total_projection > best_total_projection:
+                        best_total_projection = test_total_projection
+                        best_captain = candidate_captain
+                        # Store the optimal flex selection for later use
+                        best_lineup_result = {p.player_id: flex_vars_test[p.player_id].varValue 
+                                            for p in opt_players if p.player_id != candidate_captain.player_id}
+            
+            if best_captain is None:
+                logger.warning(f"Baseline showdown {optimize_for}: No optimal captain found after testing all candidates")
+                return None
+            
+            # For projection case, we've already solved and found the optimal lineup
+            # Use the stored flex_vars from the test problem
+            logger.info(
+                f"Baseline showdown {optimize_for}: Selected captain {best_captain.name} "
+                f"(max_total_projection={best_total_projection:.1f})"
+            )
+        
+        # Log captain selection for smart_score case
+        if optimize_for == 'smart_score':
+            logger.info(
+                f"Baseline showdown {optimize_for}: Selected captain {best_captain.name} "
+                f"(value={captain_candidates[0][1]:.4f})"
+            )
+        
+        # For projection case, skip solving again - use results from test problems
+        if optimize_for == 'projection' and best_lineup_result is not None:
+            # Use the already-solved flex selection
+            flex_vars_result = best_lineup_result
+        else:
+            # For smart_score or if projection test failed, solve normally
+            # Create PuLP problem
+            prob = pulp.LpProblem(f"Baseline_Showdown_{optimize_for}", pulp.LpMaximize)
+            
+            # Create binary variables for FLEX positions (exclude captain)
+            flex_vars = {}
+            for player in opt_players:
+                if player.player_id != best_captain.player_id:
+                    var_name = f"flex_{player.player_id}"
+                    flex_vars[player.player_id] = pulp.LpVariable(var_name, cat='Binary')
+            
+            # Objective: Maximize (captain objective * 1.5) + sum(FLEX objectives)
+            if optimize_for == 'smart_score':
+                objective_terms = [best_captain.smart_score * CAPTAIN_MULTIPLIER]
+                for player in opt_players:
+                    if player.player_id != best_captain.player_id:
+                        objective_terms.append(
+                            player.smart_score * flex_vars[player.player_id]
+                        )
+            else:  # 'projection' (fallback case)
+                if not best_captain.projection:
+                    logger.warning(f"Baseline showdown {optimize_for}: Captain has no projection")
+                    return None
+                objective_terms = [best_captain.projection * CAPTAIN_MULTIPLIER]
+                for player in opt_players:
+                    if player.player_id != best_captain.player_id:
+                        if player.projection:
+                            objective_terms.append(
+                                player.projection * flex_vars[player.player_id]
+                            )
+            
+            prob += pulp.lpSum(objective_terms)
+            
+            # Constraint: Exactly 5 FLEX players
+            prob += pulp.lpSum([flex_vars[p.player_id] for p in opt_players if p.player_id != best_captain.player_id]) == 5
+            
+            # Constraint: Total salary <= $50,000
+            captain_salary = int(best_captain.salary * CAPTAIN_MULTIPLIER)
+            flex_salary_sum = pulp.lpSum([
+                player.salary * flex_vars[player.player_id]
+                for player in opt_players if player.player_id != best_captain.player_id
+            ])
+            prob += captain_salary + flex_salary_sum <= SHOWDOWN_SALARY_CAP
+            
+            # Constraint: Total salary >= $47,000
+            prob += captain_salary + flex_salary_sum >= SHOWDOWN_MIN_SALARY
+            
+            # No ownership constraints for baseline - pure optimization
+            
+            # Solve
+            prob.solve(pulp.PULP_CBC_CMD(msg=0))
+            
+            if prob.status != pulp.LpStatusOptimal:
+                logger.error(
+                    f"Baseline showdown {optimize_for} optimization failed with status: {pulp.LpStatus[prob.status]} "
+                    f"(captain={best_captain.name}, players={len(opt_players)})"
+                )
+                return None
+            
+            # Extract flex_vars results
+            flex_vars_result = {p.player_id: flex_vars[p.player_id].varValue 
+                               for p in opt_players if p.player_id != best_captain.player_id}
+        
+        # Extract selected players
+        selected_players = []
+        captain_salary = int(best_captain.salary * CAPTAIN_MULTIPLIER)
+        total_salary = captain_salary
+        
+        # Calculate totals based on optimization objective
+        if optimize_for == 'smart_score':
+            total_smart_score = best_captain.smart_score * CAPTAIN_MULTIPLIER
+            total_projection = (best_captain.projection * CAPTAIN_MULTIPLIER) if best_captain.projection else 0
+        else:  # 'projection'
+            total_projection = best_captain.projection * CAPTAIN_MULTIPLIER
+            # Also calculate smart score for display
+            total_smart_score = best_captain.smart_score * CAPTAIN_MULTIPLIER
+        
+        total_ownership = best_captain.ownership or 0.0
+        
+        # Add captain
+        selected_players.append({
+            'position': best_captain.position,
+            'player_key': best_captain.player_key,
+            'name': best_captain.name,
+            'team': best_captain.team,
+            'salary': best_captain.salary,
+            'smart_score': best_captain.smart_score,
+            'ownership': best_captain.ownership,
+            'projection': best_captain.projection,
+            'is_captain': True,
+        })
+        
+        # Add FLEX players using flex_vars_result (works for both cases)
+        for player in opt_players:
+            if player.player_id != best_captain.player_id:
+                # Check if this player was selected (flex_vars_result contains 1.0 for selected, 0.0 or None for not)
+                is_selected = flex_vars_result.get(player.player_id, 0) == 1 or flex_vars_result.get(player.player_id, 0) == 1.0
+                if is_selected:
+                    selected_players.append({
+                        'position': player.position,
+                        'player_key': player.player_key,
+                        'name': player.name,
+                        'team': player.team,
+                        'salary': player.salary,
+                        'smart_score': player.smart_score,
+                        'ownership': player.ownership,
+                        'projection': player.projection,
+                        'is_captain': False,
+                    })
+                    total_salary += player.salary
+                    total_smart_score += player.smart_score
+                    if player.projection:
+                        total_projection += player.projection
+                    total_ownership += player.ownership or 0.0
+        
+        # Validate lineup
+        if len(selected_players) != SHOWDOWN_TOTAL_POSITIONS:
+            logger.warning(f"Baseline showdown {optimize_for}: Invalid lineup size {len(selected_players)} (expected {SHOWDOWN_TOTAL_POSITIONS})")
+            return None
+        
+        avg_ownership = total_ownership / len(selected_players) if selected_players else 0.0
+        if avg_ownership > 1.0:
+            avg_ownership = avg_ownership / 100.0
+        
         return GeneratedLineup(
             lineup_number=lineup_number,
             players=selected_players,
@@ -1517,6 +1901,9 @@ class LineupOptimizerService:
                 logger.warning(f"Player {player.name} has ZERO salary - skipping")
                 skipped_zero_salary += 1
                 continue
+            
+            # Note: $100 minimum salary players are allowed (no minimum threshold filter)
+            # Only null/zero salaries are filtered out to allow Showdown mode low-priced players
 
             # Tournament mode filters (based on research)
             if strategy_mode == 'Tournament':

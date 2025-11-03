@@ -95,10 +95,13 @@ export const LineupsPage: React.FC = () => {
   }, []);
 
   // Update contest_mode in settings when mode changes
+  // Also set appropriate defaults for max_ownership (75% for showdown, 15% for main)
   useEffect(() => {
     setSettings((prev) => ({
       ...prev,
       contest_mode: mode,
+      // Set default max_ownership: 75% for showdown, 15% for main
+      max_ownership: mode === 'showdown' ? 0.75 : 0.15,
     }));
   }, [mode]);
 
@@ -319,6 +322,7 @@ export const LineupsPage: React.FC = () => {
               isLoading={isGenerating}
               onSaveSelected={handleSaveSelected}
               isSaving={isSaving}
+              contestMode={mode}
             />
           </React.Suspense>
         </Box>

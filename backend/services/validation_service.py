@@ -108,6 +108,9 @@ class ValidationService:
     def validate_salary_range(self, salary: Optional[int], player_name: str) -> None:
         """
         Validate salary is not blank.
+        
+        Note: No minimum salary validation is applied - allows $100 minimum
+        salary players for Showdown mode. Only validates that salary is not None.
 
         Args:
             salary: The salary value to validate
@@ -120,6 +123,9 @@ class ValidationService:
             raise DataImportError(
                 f"Invalid salary for {player_name}: salary cannot be blank"
             )
+        
+        # No minimum threshold check - allows salaries as low as $100 for Showdown mode
+        # MAX_SALARY validation is enforced separately if needed
 
     def validate_projection(self, projection: Optional[float], player_name: str) -> None:
         """
