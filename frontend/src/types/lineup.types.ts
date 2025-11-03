@@ -25,6 +25,7 @@ export interface OptimizationSettings {
   stacking_rules?: StackingRules;
   exclude_bottom_percentile?: number;
   max_ownership?: number;
+  contest_mode?: 'main' | 'showdown';
   locked_captain_id?: string | null; // Showdown mode: force specific player as captain
 }
 

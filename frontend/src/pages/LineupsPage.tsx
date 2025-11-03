@@ -56,6 +56,7 @@ const DEFAULT_SETTINGS: OptimizationSettings = {
     qb_wr_stack_enabled: true,  // Default ON for tournaments
     bring_back_enabled: true,    // Default ON for tournaments
   },
+  contest_mode: 'main',  // Default to main, will be updated when mode changes
 };
 
 export const LineupsPage: React.FC = () => {
@@ -93,6 +94,14 @@ export const LineupsPage: React.FC = () => {
     }
   }, []);
 
+  // Update contest_mode in settings when mode changes
+  useEffect(() => {
+    setSettings((prev) => ({
+      ...prev,
+      contest_mode: mode,
+    }));
+  }, [mode]);
+
   // Clear locked captain when mode or week changes
   useEffect(() => {
     if (settings.locked_captain_id) {
@@ -111,10 +120,15 @@ export const LineupsPage: React.FC = () => {
 
     setError(null);
     try {
+      // Ensure settings includes contest_mode
+      const settingsWithMode = {
+        ...settings,
+        contest_mode: mode,
+      };
+
       const request: LineupOptimizationRequest = {
         week_id: weekId,
-        settings,
-        contest_mode: mode, // Include contest mode
+        settings: settingsWithMode,
       };
 
       // Only include selected_player_ids if players were actually selected
@@ -124,7 +138,7 @@ export const LineupsPage: React.FC = () => {
 
       // Include locked_captain_id from settings if showdown mode
       if (mode === 'showdown' && settings.locked_captain_id) {
-        request.locked_captain_id = settings.locked_captain_id;
+        request.settings.locked_captain_id = settings.locked_captain_id;
       }
 
       // Include customized weights and config so lineups use the same Smart Scores

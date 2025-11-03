@@ -157,12 +157,26 @@ async def generate_lineups(
         # Generate lineups (optimizer will handle contest_mode from settings)
         optimizer_service = LineupOptimizerService(db)
 
-        contest_mode = request.settings.contest_mode
+        # Get contest_mode from settings, default to 'main' if not set
+        contest_mode = request.settings.contest_mode if request.settings.contest_mode else 'main'
+        
+        # Log for debugging
         logger.info(
             f"Attempting to generate {request.settings.num_lineups} lineups "
             f"from {len(players_with_scores)} players for week {request.week_id} "
             f"in {contest_mode} mode"
         )
+        
+        # Log selected player IDs for debugging
+        if request.selected_player_ids:
+            logger.info(
+                f"Selected player IDs: {request.selected_player_ids[:10]}..." 
+                f"({len(request.selected_player_ids)} total)"
+            )
+            logger.info(
+                f"Available player IDs from Smart Score: {[p.player_id for p in players_with_scores[:10]]}..."
+                f"({len(players_with_scores)} total)"
+            )
 
         generated_lineups, position_counts = optimizer_service.generate_lineups(
             week_id=request.week_id,
