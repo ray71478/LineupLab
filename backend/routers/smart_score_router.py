@@ -75,6 +75,7 @@ async def calculate_smart_scores(
             week_id=request.week_id,
             weights=request.weights,
             config=request.config,
+            contest_mode=request.contest_mode,
         )
 
         # Service already returns PlayerScoreResponse objects

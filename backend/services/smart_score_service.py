@@ -822,7 +822,7 @@ class SmartScoreService:
         return defaults
 
     def _generate_cache_key(
-        self, week_id: int, weights: WeightProfile, config: ScoreConfig
+        self, week_id: int, weights: WeightProfile, config: ScoreConfig, contest_mode: str = "main"
     ) -> str:
         """
         Generate cache key for calculation results.
@@ -831,6 +831,7 @@ class SmartScoreService:
             week_id: Week ID
             weights: Weight profile
             config: Score configuration
+            contest_mode: Contest mode ('main' or 'showdown')
 
         Returns:
             Cache key string
@@ -840,6 +841,7 @@ class SmartScoreService:
             "week_id": week_id,
             "weights": weights.dict(),
             "config": config.dict(),
+            "contest_mode": contest_mode,
         }
         cache_str = json.dumps(cache_data, sort_keys=True)
         return hashlib.md5(cache_str.encode()).hexdigest()
@@ -849,6 +851,7 @@ class SmartScoreService:
         week_id: int,
         weights: WeightProfile,
         config: ScoreConfig,
+        contest_mode: str = "main",
     ) -> List[PlayerScoreResponse]:
         """
         Calculate Smart Scores for all available players in a week.
@@ -861,25 +864,32 @@ class SmartScoreService:
             week_id: Week ID to calculate scores for
             weights: Weight profile (W1-W8)
             config: Calculation configuration
+            contest_mode: Contest mode filter ('main' or 'showdown', default='main')
 
         Returns:
             List of PlayerScoreResponse with calculated scores
         """
+        # Validate contest_mode
+        if contest_mode not in ['main', 'showdown']:
+            logger.warning(f"Invalid contest_mode '{contest_mode}', defaulting to 'main'")
+            contest_mode = 'main'
+
         # Check cache first
-        cache_key = self._generate_cache_key(week_id, weights, config)
+        cache_key = self._generate_cache_key(week_id, weights, config, contest_mode)
         if cache_key in self._calculation_cache:
             cached_results, timestamp = self._calculation_cache[cache_key]
             if datetime.now() - timestamp < self._cache_ttl:
-                logger.debug(f"Cache HIT for week {week_id}")
+                logger.debug(f"Cache HIT for week {week_id}, mode {contest_mode}")
                 return cached_results
             else:
                 # Cache expired, remove it
                 del self._calculation_cache[cache_key]
 
-        logger.debug(f"Cache MISS for week {week_id}, calculating...")
+        logger.debug(f"Cache MISS for week {week_id}, mode {contest_mode}, calculating...")
 
         # Fetch all players for the week including injury status and calibrated projections
         # Uses COALESCE to fall back to original projections if calibrated values are NULL
+        # Filters by contest_mode to show only relevant players
         players_query = text("""
             SELECT
                 id,
@@ -897,12 +907,12 @@ class SmartScoreService:
                 COALESCE(injury_status, NULL) as injury_status,
                 calibration_applied
             FROM player_pools
-            WHERE week_id = :week_id
+            WHERE week_id = :week_id AND contest_mode = :contest_mode
             ORDER BY position, name
         """)
 
         rows = self.session.execute(
-            players_query, {"week_id": week_id}
+            players_query, {"week_id": week_id, "contest_mode": contest_mode}
         ).fetchall()
 
         # Get season and week_number for insights

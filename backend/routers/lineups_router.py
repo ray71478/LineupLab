@@ -87,10 +87,13 @@ async def generate_lineups(
             logger.info("Using default weight profile for Smart Score calculation")
 
         # Calculate Smart Scores with the selected weights/config
+        # Use contest_mode from request.settings to filter players
+        contest_mode = request.settings.contest_mode if request.settings else "main"
         players_with_scores = smart_score_service.calculate_for_all_players(
             week_id=request.week_id,
             weights=weights,
             config=config,
+            contest_mode=contest_mode,
         )
 
         if not players_with_scores:

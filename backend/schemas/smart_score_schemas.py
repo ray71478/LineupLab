@@ -74,6 +74,7 @@ class CalculateScoreRequest(BaseModel):
     week_id: int = Field(..., ge=1, description="Week ID for calculation")
     weights: WeightProfile = Field(..., description="Weight profile (W1-W8)")
     config: ScoreConfig = Field(default_factory=ScoreConfig, description="Calculation configuration")
+    contest_mode: str = Field(default="main", description="Contest mode ('main' or 'showdown')")
     
     class Config:
         from_attributes = True

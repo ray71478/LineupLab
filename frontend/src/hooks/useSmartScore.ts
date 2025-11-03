@@ -20,6 +20,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMode } from './useMode';
 import type {
   PlayerScoreResponse,
   CalculateScoreRequest,
@@ -53,7 +54,7 @@ async function fetchPlayersWithScores(weekId: number): Promise<PlayerScoreRespon
 /**
  * Calculate Smart Scores for all players in a week
  */
-async function calculateScores(request: CalculateScoreRequest): Promise<PlayerScoreResponse[]> {
+async function calculateScores(request: CalculateScoreRequest, contestMode: string): Promise<PlayerScoreResponse[]> {
   // Create a clean request object to avoid circular reference issues
   const cleanRequest = {
     week_id: request.week_id,
@@ -72,6 +73,7 @@ async function calculateScores(request: CalculateScoreRequest): Promise<PlayerSc
       eighty_twenty_enabled: request.config.eighty_twenty_enabled,
       eighty_twenty_threshold: request.config.eighty_twenty_threshold,
     },
+    contest_mode: contestMode,
   };
 
   const response = await fetch('/api/smart-score/calculate', {
@@ -105,6 +107,7 @@ export const useSmartScore = (
   weekId: number | null
 ): UseSmartScoreReturn => {
   const queryClient = useQueryClient();
+  const { mode } = useMode();
 
   // Fetch players (initial load)
   const {
@@ -113,7 +116,7 @@ export const useSmartScore = (
     error,
     refetch,
   } = useQuery({
-    queryKey: ['smart-scores', weekId],
+    queryKey: ['smart-scores', weekId, mode],
     queryFn: () => fetchPlayersWithScores(weekId!),
     enabled: weekId !== null,
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -121,12 +124,12 @@ export const useSmartScore = (
 
   // Calculate scores mutation
   const calculateMutation = useMutation({
-    mutationFn: calculateScores,
+    mutationFn: (request: CalculateScoreRequest) => calculateScores(request, mode),
     onSuccess: (data, variables) => {
       // Update cache with calculated scores
-      queryClient.setQueryData(['smart-scores', variables.week_id], data);
+      queryClient.setQueryData(['smart-scores', variables.week_id, mode], data);
       // Also invalidate to trigger refetch
-      queryClient.invalidateQueries({ queryKey: ['smart-scores', variables.week_id] });
+      queryClient.invalidateQueries({ queryKey: ['smart-scores', variables.week_id, mode] });
     },
   });
 
@@ -139,11 +142,12 @@ export const useSmartScore = (
       week_id: weekId,
       weights,
       config,
+      contest_mode: mode,
     });
   };
 
   const invalidateCache = async () => {
-    await queryClient.invalidateQueries({ queryKey: ['smart-scores', weekId] });
+    await queryClient.invalidateQueries({ queryKey: ['smart-scores', weekId, mode] });
   };
 
   return {
