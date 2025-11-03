@@ -343,8 +343,25 @@ class DataImporter:
                     if source.lower() == "linestar":
                         opp_rank = player.get("opponent_rank")
                         player["opponent_rank_category"] = self._categorize_opponent_rank(opp_rank)
+                        
+                        # Normalize ownership: LineStar provides percentages (e.g., 11.2 = 11.2%)
+                        # Convert to decimal format (0-1 range) for database storage
+                        ownership = player.get("ownership")
+                        if ownership is not None:
+                            if ownership > 1.0:
+                                # Percentage format: divide by 100
+                                player["ownership"] = ownership / 100.0
+                            else:
+                                # Already decimal format: use as-is
+                                player["ownership"] = ownership
                     else:
                         player["opponent_rank_category"] = None
+                        
+                        # DraftKings ownership is typically already in decimal format (0-1)
+                        # But normalize just in case
+                        ownership = player.get("ownership")
+                        if ownership is not None and ownership > 1.0:
+                            player["ownership"] = ownership / 100.0
 
                     # Set projection_source based on source
                     # For DraftKings, we'll default to LineStar unless ETR is specified
