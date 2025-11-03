@@ -67,15 +67,31 @@ export const PlayerSelectionPage: React.FC = () => {
 
   const [players, setPlayers] = useState<PlayerScoreResponse[]>([]);
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<number>>(new Set());
-  const [excludeBottomPercentile, setExcludeBottomPercentile] = useState<number>(15);
-  const [minITT, setMinITT] = useState<number>(18.5);
-  const [meets35XValue, setMeets35XValue] = useState<boolean>(true);
+  // Mode-aware default filters: Showdown needs more lenient filters
+  const [excludeBottomPercentile, setExcludeBottomPercentile] = useState<number>(
+    mode === 'showdown' ? 1 : 15
+  );
+  const [minITT, setMinITT] = useState<number>(
+    mode === 'showdown' ? 0.5 : 18.5
+  );
+  const [meets35XValue, setMeets35XValue] = useState<boolean>(
+    mode === 'showdown' ? false : true
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showModeChangeToast, setShowModeChangeToast] = useState(false);
 
   // Track previous mode to detect changes
   const previousMode = useRef(mode);
+
+  // Initialize filters based on mode on mount
+  useEffect(() => {
+    // Set initial filters based on current mode
+    setExcludeBottomPercentile(mode === 'showdown' ? 1 : 15);
+    setMinITT(mode === 'showdown' ? 0.5 : 18.5);
+    setMeets35XValue(mode === 'showdown' ? false : true);
+    previousMode.current = mode;
+  }, []); // Run only on mount
 
   // Load players with Smart Scores
   useEffect(() => {
@@ -121,11 +137,16 @@ export const PlayerSelectionPage: React.FC = () => {
       return;
     }
 
-    // Mode has changed - clear selections
+    // Mode has changed - clear selections and reset filters to mode-appropriate defaults
     if (selectedPlayerIds.size > 0) {
       setSelectedPlayerIds(new Set());
       setShowModeChangeToast(true);
     }
+    
+    // Reset filters to mode-appropriate defaults
+    setExcludeBottomPercentile(mode === 'showdown' ? 1 : 15);
+    setMinITT(mode === 'showdown' ? 0.5 : 18.5);
+    setMeets35XValue(mode === 'showdown' ? false : true);
 
     // Update previous mode reference
     previousMode.current = mode;
