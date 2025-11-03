@@ -8,14 +8,33 @@ LineupLab is an intelligent DFS lineup optimizer built for serious GPP tournamen
 
 ## Quick Start
 
-### Prerequisites
+### 🐳 Option 1: Docker (Recommended - Easiest!)
 
+**Perfect for non-technical users!** No need to install Python, Node.js, or PostgreSQL.
+
+1. **Install Docker Desktop**: [Download here](https://www.docker.com/products/docker-desktop/)
+2. **Clone or download** this repository
+3. **Run**:
+   ```bash
+   ./start.sh
+   ```
+4. **Open**: http://localhost
+
+**That's it!** Everything runs in Docker containers.
+
+📖 **See [DOCKER_SETUP.md](./DOCKER_SETUP.md) for detailed instructions.**
+
+---
+
+### 💻 Option 2: Manual Setup (For Developers)
+
+**Prerequisites:**
 - **Python 3.11+** (backend)
 - **Node.js 18+** (frontend)
 - **PostgreSQL 15** (database)
 - **Docker Desktop** (recommended for local database)
 
-### Backend Setup
+#### Backend Setup
 
 1. **Create a virtual environment:**
    ```bash
@@ -62,7 +81,7 @@ LineupLab is an intelligent DFS lineup optimizer built for serious GPP tournamen
    - Interactive docs: http://localhost:8000/docs
    - ReDoc: http://localhost:8000/redoc
 
-### Frontend Setup
+#### Frontend Setup
 
 1. **Install Node.js dependencies:**
    ```bash

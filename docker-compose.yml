@@ -1,8 +1,12 @@
 # ============================================
-# Cortex DFS Lineup Optimizer - Docker Compose Configuration
+# LineupLab DFS Lineup Optimizer - Docker Compose Configuration
 # ============================================
-# This file defines the PostgreSQL database service for local development
-# Version matches cloud deployment (PostgreSQL 15) for local-vs-cloud parity
+# This file runs the complete LineupLab application:
+# - PostgreSQL database
+# - FastAPI backend
+# - React frontend
+#
+# Usage: docker-compose up -d
 
 version: '3.8'
 
@@ -12,75 +16,112 @@ services:
   # ------------------------------------------
   postgres:
     image: postgres:15
-    container_name: cortex-postgres
+    container_name: lineuplab-postgres
 
-    # Environment variables for database initialization
     environment:
-      POSTGRES_USER: cortex
-      POSTGRES_PASSWORD: cortex
-      POSTGRES_DB: cortex
-      # Optimize PostgreSQL for development
+      POSTGRES_USER: lineuplab
+      POSTGRES_PASSWORD: lineuplab
+      POSTGRES_DB: lineuplab
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
 
-    # Port mapping: expose PostgreSQL on localhost:5432 for SQL client access
-    # This allows connections via pgAdmin, DBeaver, or psql
     ports:
       - "5432:5432"
 
-    # Volume mount: persist data between container restarts
-    # Data stored in ./data directory (git-ignored)
     volumes:
       - ./data:/var/lib/postgresql/data
 
-    # Health check: verify PostgreSQL is ready to accept connections
-    # Used by init_db.sh script to wait for database before running migrations
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cortex -d cortex"]
+      test: ["CMD-SHELL", "pg_isready -U lineuplab -d lineuplab"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
 
-    # Restart policy: keep PostgreSQL running unless explicitly stopped
     restart: unless-stopped
-
-    # Network configuration
     networks:
-      - cortex-network
+      - lineuplab-network
+
+  # ------------------------------------------
+  # FastAPI Backend Service
+  # ------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+
+    container_name: lineuplab-backend
+
+    environment:
+      DATABASE_URL: postgresql://lineuplab:lineuplab@postgres:5432/lineuplab
+      DEBUG: "false"
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+
+    ports:
+      - "8000:8000"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    volumes:
+      - ./backend:/app/backend
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+
+    restart: unless-stopped
+    networks:
+      - lineuplab-network
+
+  # ------------------------------------------
+  # React Frontend Service (Production Build)
+  # ------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+
+    container_name: lineuplab-frontend
+
+    ports:
+      - "80:80"
+
+    depends_on:
+      - backend
+
+    restart: unless-stopped
+    networks:
+      - lineuplab-network
 
 # ------------------------------------------
 # Network Configuration
 # ------------------------------------------
 networks:
-  cortex-network:
+  lineuplab-network:
     driver: bridge
 
 # ------------------------------------------
-# Usage Instructions
+# Quick Start Commands
 # ------------------------------------------
-# Start PostgreSQL:
+# Start everything:
 #   docker-compose up -d
 #
 # View logs:
-#   docker-compose logs -f postgres
+#   docker-compose logs -f
 #
-# Stop PostgreSQL (keep data):
+# Stop everything (keep data):
 #   docker-compose stop
 #
-# Stop PostgreSQL (remove containers but keep data):
+# Stop and remove containers (keep data):
 #   docker-compose down
 #
-# Stop PostgreSQL and DELETE ALL DATA:
+# Stop and DELETE ALL DATA:
 #   docker-compose down -v
 #
-# Restart PostgreSQL:
-#   docker-compose restart postgres
+# Restart:
+#   docker-compose restart
 #
-# Check PostgreSQL health:
-#   docker-compose ps
-#
-# Connect to PostgreSQL shell:
-#   docker-compose exec postgres psql -U cortex -d cortex
-#
-# Run database initialization script:
-#   ./init_db.sh
+# Access:
+#   Frontend: http://localhost
+#   Backend API: http://localhost:8000
+#   API Docs: http://localhost:8000/docs
