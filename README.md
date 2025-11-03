@@ -1,8 +1,8 @@
-# Cortex - DFS Lineup Optimizer
+# LineupLab - DFS Lineup Optimizer
 
 **Your DFS Intelligence Layer**
 
-Cortex is an intelligent DFS lineup optimizer built for serious GPP tournament players who demand complete control over their roster construction strategy. Unlike black-box commercial tools, Cortex empowers you to define custom scoring algorithms, weigh multiple projection sources, incorporate historical trend analysis, and generate optimized DraftKings lineups with full transparency.
+LineupLab is an intelligent DFS lineup optimizer built for serious GPP tournament players who demand complete control over their roster construction strategy. Unlike black-box commercial tools, LineupLab empowers you to define custom scoring algorithms, weigh multiple projection sources, incorporate historical trend analysis, and generate optimized DraftKings lineups with full transparency.
 
 ---
 
@@ -24,8 +24,8 @@ Cortex is an intelligent DFS lineup optimizer built for serious GPP tournament p
    source venv/bin/activate  # On Windows: venv\Scripts\activate
 
    # OR using conda
-   conda create -n cortex python=3.11
-   conda activate cortex
+   conda create -n lineuplab python=3.11
+   conda activate lineuplab
    ```
 
 2. **Install Python dependencies:**
@@ -102,7 +102,7 @@ Key environment variables (see `.env.example` for full list):
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://cortex:cortex@localhost:5432/cortex` |
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://lineuplab:lineuplab@localhost:5432/lineuplab` |
 | `SECRET_KEY` | Secret key for JWT tokens (Phase 3) | Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
 | `DEBUG` | Enable debug mode | `False` |
 | `VITE_API_URL` | Backend API URL for frontend | `http://localhost:8000` |
@@ -112,7 +112,7 @@ Key environment variables (see `.env.example` for full list):
 ## Project Structure
 
 ```
-/Cortex/
+/LineupLab/
 ├── README.md (you are here)
 ├── .env.example                      # Environment configuration template
 ├── backend/
@@ -159,7 +159,7 @@ Key environment variables (see `.env.example` for full list):
 
 ### Additional Documentation:
 
-2. **[PRFAQ.md](./discovery/PRFAQ.md)** - Press Release FAQ (written as if Cortex already exists and succeeded):
+2. **[PRFAQ.md](./discovery/PRFAQ.md)** - Press Release FAQ (written as if LineupLab already exists and succeeded):
    - Headline & press release
    - Customer problem/solution narrative
    - Key features & benefits
@@ -184,13 +184,13 @@ Key environment variables (see `.env.example` for full list):
 
 ---
 
-## What is Cortex?
+## What is LineupLab?
 
 **The Problem:**
 Existing DFS tools are either too simplistic (manual spreadsheets) or too opaque (proprietary algorithms you can't control). You need a tool that gives you full control over the "brain" of the optimizer.
 
 **The Solution:**
-Cortex combines multiple data sources (LineStar, DraftKings, historical NFL stats) with a configurable "Smart Score" algorithm to generate optimized DraftKings lineups. You define the formula, adjust weights in real-time, and understand exactly why each lineup was constructed.
+LineupLab combines multiple data sources (LineStar, DraftKings, historical NFL stats) with a configurable "Smart Score" algorithm to generate optimized DraftKings lineups. You define the formula, adjust weights in real-time, and understand exactly why each lineup was constructed.
 
 **Key Features:**
 - Multi-source data import (LineStar, DraftKings, NFL historical stats)
@@ -314,4 +314,4 @@ Cortex combines multiple data sources (LineStar, DraftKings, historical NFL stat
 
 **This is not a rebuild. This is the first real launch.**
 
-Let's build Cortex.
+Let's build LineupLab.

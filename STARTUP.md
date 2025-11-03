@@ -1,4 +1,4 @@
-# Cortex Startup Guide
+# LineupLab Startup Guide
 
 ## 1. Kill All Processes
 ```bash
