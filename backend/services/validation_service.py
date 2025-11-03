@@ -27,8 +27,9 @@ class ValidationService:
     # K (kicker) is required for Showdown mode
     VALID_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DST"}
 
-    # Salary range (in cents: 2000 = $20.00, 15000 = $150.00 in DraftKings)
-    MIN_SALARY = 2000
+    # Salary range (in whole dollars: 100 = $100, 15000 = $15000 in DraftKings)
+    # Lowered minimum to $100 to accommodate Showdown mode low-priced players
+    MIN_SALARY = 100
     MAX_SALARY = 15000
 
     # Week range
