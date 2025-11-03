@@ -10,6 +10,7 @@
  */
 
 import { useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useWeekStore } from '../store/weekStore';
 import { useMode } from './useMode';
 
@@ -96,8 +97,9 @@ function getApiEndpoint(importType: 'linestar' | 'draftkings' | 'nfl-stats'): st
  * 5. Handle responses (success, warning, error)
  */
 export const useDataImport = (): UseDataImportReturn => {
-  const { currentWeek } = useWeekStore();
+  const { currentWeek: currentWeekNumber, getCurrentWeekData } = useWeekStore();
   const { mode } = useMode();
+  const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -139,9 +141,9 @@ export const useDataImport = (): UseDataImportReturn => {
         }
 
         // Check for week mismatch (only for linestar and draftkings)
-        if (importType !== 'nfl-stats' && detectedWeekNum && detectedWeekNum !== currentWeek && !confirmWeekMismatch) {
+        if (importType !== 'nfl-stats' && detectedWeekNum && detectedWeekNum !== currentWeekNumber && !confirmWeekMismatch) {
           setDetectedWeek(detectedWeekNum);
-          setSelectedWeek(currentWeek);
+          setSelectedWeek(currentWeekNumber);
           setIsWeekMismatch(true);
           setIsLoading(false);
           return null; // Caller should show dialog and retry with confirmWeekMismatch=true
@@ -153,8 +155,8 @@ export const useDataImport = (): UseDataImportReturn => {
 
         // Add week information for linestar and draftkings
         if (importType !== 'nfl-stats') {
-          const weekToUse = confirmWeekMismatch ? detectedWeekNum : currentWeek;
-          formData.append('week_id', String(weekToUse || currentWeek));
+          const weekToUse = confirmWeekMismatch ? detectedWeekNum : currentWeekNumber;
+          formData.append('week_id', String(weekToUse || currentWeekNumber));
           if (detectedWeekNum) {
             formData.append('detected_week', String(detectedWeekNum));
           }
@@ -198,6 +200,19 @@ export const useDataImport = (): UseDataImportReturn => {
         const message = data.message ? `${data.message}${modeText}` : `Import successful${modeText}`;
         setSuccessMessage(message);
         setImportId(data.import_id || null);
+        
+        // Invalidate player cache to refresh the player list
+        // This ensures newly imported players appear immediately
+        // Get the current week ID for cache invalidation
+        const currentWeekData = getCurrentWeekData();
+        const weekId = currentWeekData?.id ?? null;
+        if (weekId !== null) {
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['players', weekId, mode] }),
+            queryClient.invalidateQueries({ queryKey: ['unmatched-players', weekId, mode] }),
+          ]);
+        }
+        
         setIsLoading(false);
 
         return data;
@@ -208,7 +223,7 @@ export const useDataImport = (): UseDataImportReturn => {
         return null;
       }
     },
-    [currentWeek, mode, clearMessages]
+    [currentWeekNumber, mode, clearMessages, queryClient, getCurrentWeekData]
   );
 
   return {
